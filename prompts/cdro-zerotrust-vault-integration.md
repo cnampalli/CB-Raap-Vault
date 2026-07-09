@@ -61,6 +61,11 @@ not to reverse-engineer from scratch. Where a fact is marked *open*, and only th
 - **Key distribution is manual/admin-managed:** the private signing key lives in the CDRO Credential;
   an admin pastes the matching **public key** into the Vault mount's `jwt_validation_pubkeys`;
   **rotation is a manual, coordinated step.**
+- **Key generation is an admin task done with `openssl`** (ships on RHEL 8.10; no `pip`, Python stdlib
+  can't generate asymmetric keys). Generate offline, `chmod 600` the private key, never commit it. Key
+  **type must match** the plugin `Algorithm`: RS*/PS* → RSA (default RS256, 3072-bit), ES* → EC (matching
+  curve P-256/384/521), EdDSA → Ed25519. Private key → CDRO Credential; public PEM (`-----BEGIN PUBLIC
+  KEY-----`) → `jwt_validation_pubkeys`.
 
 **Plugin Configuration** (Plugin-Management → Configurations → New Configuration): `Name`; `Project`;
 `Description`; `Plugin=ZeroTrust`; **`Endpoint`** (Vault URL; referable in claims as `<vault-url>`);
@@ -134,9 +139,11 @@ e.g. `secret`); **`Namespace`** (e.g. `aut`; referable as `<namespace>`); **`deb
 ## LOAD CONTEXT FIRST (read these before writing anything)
 
 - `CLAUDE.md` — the WAT rules you must follow.
-- `docs/getting-started/03-cloudbees-cdro.md` and `docs/vault-integrations/03-cdro-ci-broker.md` —
-  the **current** CDRO docs. They describe a **CI-broker** pattern on the premise that CDRO has *no
-  OIDC issuer*. You will reconcile these against what the ZeroTrust plugin actually does.
+- `docs/getting-started/03-cloudbees-cdro.md` and `docs/vault-integrations/03-cdro-zerotrust-jwt.md`
+  (formerly `03-cdro-ci-broker.md`) — the CDRO docs. These now **lead with the ZeroTrust direct-JWT
+  flow** and keep the **CI-broker pattern as a documented fallback**. On a first run they may still be
+  broker-only (premise: CDRO has *no OIDC issuer*) — reconcile them against what the ZeroTrust plugin
+  actually does; on a refresh run, extend the existing ZeroTrust content.
 - `docs/getting-started/02-cloudbees-ci.md` and `docs/vault-integrations/02-cloudbees-ci-oidc.md` —
   the **working JWT → Vault flow** to mirror (JWT auth mount, role bindings `bound_issuer` /
   `bound_audiences` / `bound_claims` / `user_claim` / `claim_mappings`, three code variants).
@@ -201,6 +208,9 @@ reads:** the ZeroTrust plugin mints usable JWTs directly, so CDRO authenticates 
   585/604 syntax, no f-string edge cases that 3.6 rejects), verb-first snake_case, one task per
   script. Prefer reusing `inspect_jwt_claims.py` (do not use `check_oidc_discovery.py` for CDRO — no
   discovery endpoint).
+- **Key generation uses `openssl`** (the airgap-native tool, ships on RHEL 8.10 — `openssl 1.1.1k`),
+  **not** a `tools/*.py` helper: Python stdlib cannot generate asymmetric keys and there is no `pip`.
+  Document the commands (`openssl genpkey` / `openssl pkey -pubout`); do not add a keygen binary.
 - **Zero-trust rules** — short-lived tokens; least privilege; **narrow `bound_claims`** (never a
   wildcard-all role); audience must match the credential's audience exactly; secret hygiene
   (`set +x` around secrets, pass tokens via **stdin** not argv, self-revoke in cleanup); default
@@ -242,10 +252,17 @@ Python**. Write for them:
 3. **Examples** — tiered CDRO example templates under `docs/vault-integrations/examples/` (one per
    tier), each with an assumptions header and airgap notes (private CA, `set +x`, stdin, self-revoke,
    core steps only — no optional-plugin dependencies).
-4. **Matrix & tables** — add CDRO rows to `00-before-you-begin.md` §2.1 (requirements/compatibility)
-   and to the verify/troubleshoot tables in `docs/getting-started/05-verify-and-troubleshoot.md` and
-   `docs/vault-integrations/05-operations-appendix.md`.
-5. **Changelog** — append a dated entry to `docs/CHANGELOG.md` summarising what you investigated,
+4. **Key-generation runbook** — a standalone `docs/getting-started/03a-zerotrust-key-generation.md`:
+   copy-paste **`openssl`** commands to make the signing key pair (RSA/RS256 default; EC/ES*;
+   Ed25519/EdDSA), an **algorithm↔key-type table**, verify steps, where each half goes (private → CDRO
+   Credential, public → Vault `jwt_validation_pubkeys`), and rotation handling. Beginner voice + hardening
+   checklist + Verify + `Next:`. **Link it** from beginner `03` (plugin-config, mount, and rotation
+   steps), reference `03-cdro-*` (mount + rotation sections), the §2.1 matrix, and the getting-started
+   README. Add `*.pem`/`*.key` to `.gitignore` so generated keys can't be committed.
+5. **Matrix & tables** — add CDRO rows to `00-before-you-begin.md` §2.1 (requirements/compatibility;
+   include the one-time `openssl` key-gen dependency) and to the verify/troubleshoot tables in
+   `docs/getting-started/05-verify-and-troubleshoot.md` and `docs/vault-integrations/05-operations-appendix.md`.
+6. **Changelog** — append a dated entry to `docs/CHANGELOG.md` summarising what you investigated,
    decided, and changed, plus any open follow-ups.
 
 ## WAT SELF-IMPROVEMENT & EDGE CASES
@@ -268,6 +285,9 @@ explicit open question.
       wildcard-all role.
 - [ ] **Both usage patterns** documented (A in-CDRO read/credential-update; B mint-and-hand-off to
       AAP), plus **manual key-rotation runbook** and the **concurrency-clobber** warning.
+- [ ] **Key-generation runbook** (`getting-started/03a-…`) present: `openssl` commands for RS/ES/EdDSA,
+      algorithm↔key-type table, install (private→Credential, public→`jwt_validation_pubkeys`) + rotation;
+      linked from both guide-03 layers, §2.1, and the README; `.gitignore` covers `*.pem`/`*.key`.
 - [ ] Direct-JWT leads; **CI-broker kept as fallback**; `cdro/<app>` → **`cdr/<release>`** path
       reconciled repo-wide; decision record, identity table, firewall matrix, cross-links consistent.
 - [ ] **Three code tiers** present, each airgap-safe, correctly labeled; novice tier requires no

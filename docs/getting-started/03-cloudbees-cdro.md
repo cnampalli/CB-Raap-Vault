@@ -39,6 +39,11 @@ CD/RO uses the secret → token expires
 This is where a CD/RO admin tells the plugin *which Vault to talk to, which role to use, how to
 sign the JWT, and what claims to put in it*. Do it once per environment.
 
+> **First, generate the signing key pair.** The `Credential` and `Algorithm` fields below assume you
+> already have a key pair. If you don't, make one now (2 minutes, `openssl`) —
+> **[03a — Generate the ZeroTrust signing key pair](03a-zerotrust-key-generation.md)** — then come back:
+> the **private** key goes in the `Credential` field, the **public** key into Vault in Step 3.
+
 Open **Plugin Management → Configurations → New Configuration**, select **Plugin = ZeroTrust**, and fill in:
 
 | Field | Set it to | Why it matters |
@@ -52,7 +57,7 @@ Open **Plugin Management → Configurations → New Configuration**, select **Pl
 | `customClaims` | see below | JSON that builds the JWT payload — **this is where `aud` and the release claim are set.** |
 | `Test Connection Claims` | a small JSON, e.g. `{"sub":"test","job_name":"test","aud":"vault-AUT"}` | Used by the config's **Test Connection** button. |
 | `Token lifetime` | `900` (default) | JWT validity in seconds — keep it short. |
-| `Credential` | a CD/RO credential holding the **private signing key** | The plugin signs with this. Lock its ACL down (Step 8). |
+| `Credential` | a CD/RO credential holding the **private signing key** ([make one in 03a](03a-zerotrust-key-generation.md)) | The plugin signs with this. Lock its ACL down (Step 8). |
 | `Algorithm` | `RS256` *(recommended default)* | Must be an **asymmetric** alg so Vault can validate with a public key. |
 | `secret_mount_path` | `secret` | The KV v2 mount secrets live under. |
 | `Namespace` | `AUT` | Must equal the Vault namespace. |
@@ -152,7 +157,9 @@ vault write auth/jwt-cdro/config \
 ```
 
 - `zerotrust-pub.pem` is the **public** key matching the plugin's private signing `Credential`
-  (PEM, `-----BEGIN PUBLIC KEY-----`). Get it from whoever holds the ZeroTrust private key.
+  (PEM, `-----BEGIN PUBLIC KEY-----`) — the one you produced in
+  **[03a — Generate the signing key pair](03a-zerotrust-key-generation.md)** (or get it from whoever
+  holds the ZeroTrust private key). Copy it to the Vault host, e.g. `/etc/pki/vault/zerotrust-pub.pem`.
 - **No `oidc_discovery_url`** and **no `jwks_url`** — the plugin has no discovery endpoint, so Vault
   validates offline against the pasted key. That's also why no firewall path from Vault → CD/RO exists.
 
@@ -397,7 +404,10 @@ The plugin's signing key is **not** rotated automatically. Because Vault validat
 public key, rotation is a **coordinated, two-place** change — do it on a schedule and after any
 suspected exposure.
 
-1. **Generate a new asymmetric key pair** (same algorithm family, e.g. RS256) offline.
+1. **Generate a new asymmetric key pair** (same algorithm family, e.g. RS256) offline — same commands as
+   **[03a](03a-zerotrust-key-generation.md)**, e.g.
+   `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out zerotrust-private-NEW.pem` then
+   `openssl pkey -in zerotrust-private-NEW.pem -pubout -out zerotrust-pub-NEW.pem`.
 2. **Add the new public key to Vault first** (dual-trust window — Vault accepts *both* old and new):
    ```bash
    vault write auth/jwt-cdro/config \

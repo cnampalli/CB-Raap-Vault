@@ -62,6 +62,8 @@ re-check the affected guide.
    inspect the token's claims, and pick one of three pipeline styles.
 4. **[03 — CloudBees CD/RO](03-cloudbees-cdro.md)** — mint a ZeroTrust JWT in a
    procedure and read release-scoped secrets directly (CI broker kept as fallback).
+   - *First-time setup:* **[03a — Generate the ZeroTrust signing key pair](03a-zerotrust-key-generation.md)**
+     (`openssl`) — the private key for the plugin, the public key for Vault.
 5. **[04 — Ansible Automation Platform](04-aap-approle-ssh.md)** — hardened AppRole
    login + Vault-signed SSH to managed nodes.
 6. **[05 — Verify & troubleshoot](05-verify-and-troubleshoot.md)** — prove it works

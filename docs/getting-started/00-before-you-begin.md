@@ -128,6 +128,10 @@ The reference baseline below is a common airgapped RHEL agent. Confirm yours mat
 
 > The ZeroTrust plugin has **no** OIDC discovery endpoint, so `check_oidc_discovery.py` is **not** used
 > for CD/RO — only `inspect_jwt_claims.py` (to decode a captured token). Same `--cacert` TLS rule applies.
+>
+> **One-time key generation:** the plugin's signing key pair is made with **`openssl`** (ships on RHEL
+> 8.10 — `openssl version` to confirm), per [03a — Generate the signing key pair](03a-zerotrust-key-generation.md).
+> No `pip`/downloads; Python stdlib can't generate asymmetric keys, so `openssl` is the airgap-native tool.
 
 **Recommended default:** **variant A (curl)** — it needs only `curl` + the OIDC Provider
 plugin (no extra controller plugin), and the JWT is sent via stdin so it never lands in a

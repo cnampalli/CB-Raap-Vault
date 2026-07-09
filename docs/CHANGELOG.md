@@ -33,6 +33,11 @@ identity to Vault (direct JWT); the CI broker is retained only as a fallback.
   Each: assumptions header, private-CA `--cacert`, `set +x`, JWT via stdin, self-revoke.
 - **Vault foundation** (`01-vault-foundation-AUT.md`, getting-started `01`): new `jwt-cdro` auth method,
   `cdro-zerotrust-ro.hcl` templated policy, plus YAML + Terraform blocks and a Step 4b enable step.
+- **Signing key-pair runbook** — new `docs/getting-started/03a-zerotrust-key-generation.md`: airgap-safe
+  **`openssl`** commands (RSA/RS256 default; EC/ES; Ed25519/EdDSA), an algorithm↔key-type table, verify
+  steps, and where each half goes (private → CD/RO Credential, public → Vault `jwt_validation_pubkeys`).
+  Linked from guide `03` (Steps 1/3/7), the reference guide (§2/§7), the §2.1 matrix, and the README.
+  Added `*.pem`/`*.key` to `.gitignore` so generated keys can't be committed.
 - **Matrix/table rows**: `00-before-you-begin.md` §2.1 CD/RO ZeroTrust tier table + §3 direct-login flow #3;
   `getting-started/05` + `vault-integrations/05` troubleshooting + TTL rows (signature/issuer/audience
   mismatch, concurrency clobber, debug-leak; ZeroTrust JWT + token + signing-key TTLs).

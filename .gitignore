@@ -3,6 +3,11 @@
 credentials.json
 token.json
 
+# Key material — ZeroTrust signing keys are generated offline, never committed (guide 03a)
+*.pem
+*.key
+zerotrust-*.pem
+
 # Disposable processing files — regenerated as needed
 .tmp/
 

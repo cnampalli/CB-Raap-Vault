@@ -53,6 +53,11 @@ key), **`Algorithm`** (HS/RS/ES/PS/EdDSA — deployment uses an **asymmetric** a
 
 ## 2. Vault JWT mount (static pubkey — no discovery)
 
+> **Need the key pair?** Generate `zerotrust-private.pem` (→ CD/RO Credential) and `zerotrust-pub.pem`
+> (→ `jwt_validation_pubkeys` below) with `openssl` per the runbook
+> [`../getting-started/03a-zerotrust-key-generation.md`](../getting-started/03a-zerotrust-key-generation.md)
+> (RS256/RSA default; ES→EC, EdDSA→Ed25519). The PEM below is that public key.
+
 **CLI:**
 ```bash
 export VAULT_NAMESPACE=AUT
@@ -204,7 +209,8 @@ Treat the property as sensitive: mark it secure/masked, never echo it, and scope
 ## 7. Manual key rotation
 
 No automation — a coordinated, two-place change:
-1. Generate a new asymmetric key pair (same alg family).
+1. Generate a new asymmetric key pair (same alg family) with `openssl` — see the runbook
+   [`../getting-started/03a-zerotrust-key-generation.md`](../getting-started/03a-zerotrust-key-generation.md).
 2. **Add** the new public key to Vault first (`jwt_validation_pubkeys` = OLD + NEW → dual-trust window).
 3. **Swap** the private key in the CDRO Credential (new runs sign with NEW; in-flight OLD tokens still validate).
 4. After the overlap (≥ `Token lifetime`, ~900 s), **remove** the OLD public key; destroy the OLD private key.
