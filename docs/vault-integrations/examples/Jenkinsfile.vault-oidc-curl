@@ -1,0 +1,88 @@
+// ---------------------------------------------------------------------------
+// CloudBees CI → Vault Enterprise: OIDC (JWT) auth using plain curl
+//
+// Only dependency on the agent: curl (jq optional). No vault CLI, no
+// httpRequest / readJSON / writeJSON plugins.
+//
+// Assumes: namespace AUT, jwt auth mount "jwt", role "ci" ("jwt/ci"),
+//          OIDC ID-token credential "vault-oidc".
+// ---------------------------------------------------------------------------
+
+pipeline {
+  agent any
+
+  environment {
+    VAULT_ADDR      = 'https://vault-vip.corp.example.com:8200'
+    VAULT_NAMESPACE = 'AUT'
+    VAULT_JWT_PATH  = 'jwt'      // -> /v1/auth/jwt/login
+    VAULT_ROLE      = 'ci'
+    VAULT_CACERT    = '/etc/pki/vault/ca.crt'   // private CA bundle for the Vault endpoint
+  }
+
+  options { disableConcurrentBuilds() }   // timestamps() omitted — it needs the Timestamper plugin
+
+  stages {
+
+    stage('Authenticate to Vault (OIDC, curl)') {
+      steps {
+        withCredentials([string(credentialsId: 'vault-oidc', variable: 'ID_TOKEN')]) {
+          script {
+            def token = sh(returnStdout: true, script: '''
+              set -eu
+              set +x                              # never trace the token/response
+              # Send the JWT via stdin (--data @-) so it never appears in the
+              # process list / argv. grep+cut pulls client_token without jq.
+              curl -sS --fail \
+                   --cacert "$VAULT_CACERT" \
+                   -H "X-Vault-Namespace: $VAULT_NAMESPACE" \
+                   --request POST \
+                   --data @- \
+                   "$VAULT_ADDR/v1/auth/$VAULT_JWT_PATH/login" <<EOF |
+{"role":"$VAULT_ROLE","jwt":"$ID_TOKEN"}
+EOF
+              grep -o '"client_token":"[^"]*"' | head -1 | cut -d'"' -f4
+              # --- jq alternative (if installed): replace the grep|cut line with
+              #     jq -r '.auth.client_token'
+            ''').trim()
+            env.VAULT_TOKEN = token              // kept in memory, not printed
+            echo "Vault login OK via /v1/auth/${env.VAULT_JWT_PATH}/login (role=${env.VAULT_ROLE})"
+          }
+        }
+      }
+    }
+
+    stage('Read a secret (KV v2, curl)') {
+      steps {
+        sh '''
+          set -eu
+          set +x
+          DB_PASS=$(curl -sS --fail \
+              --cacert "$VAULT_CACERT" \
+              -H "X-Vault-Namespace: $VAULT_NAMESPACE" \
+              -H "X-Vault-Token: $VAULT_TOKEN" \
+              "$VAULT_ADDR/v1/secret/data/ci/payments/db" \
+            | grep -o '"password":"[^"]*"' | head -1 | cut -d'"' -f4)
+          echo "Fetched secret (length=${#DB_PASS}) — value not printed."
+          # ... use $DB_PASS here; never echo it.
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      sh '''
+        set +e
+        set +x
+        if [ -n "${VAULT_TOKEN:-}" ]; then
+          curl -sS --cacert "$VAULT_CACERT" \
+               -H "X-Vault-Namespace: $VAULT_NAMESPACE" \
+               -H "X-Vault-Token: $VAULT_TOKEN" \
+               --request POST \
+               "$VAULT_ADDR/v1/auth/token/revoke-self" >/dev/null 2>&1 || true
+        fi
+      '''
+      deleteDir()   // core Pipeline step (no plugin). cleanWs() needs the ws-cleanup plugin.
+    }
+  }
+}

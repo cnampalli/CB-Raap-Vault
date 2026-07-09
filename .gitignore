@@ -1,0 +1,16 @@
+# Secrets — never commit these (see CLAUDE.md: credentials live only in .env)
+.env
+credentials.json
+token.json
+
+# Disposable processing files — regenerated as needed
+.tmp/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS / editor
+.DS_Store

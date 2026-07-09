@@ -1,0 +1,94 @@
+// ---------------------------------------------------------------------------
+// CloudBees CI → HashiCorp Vault Enterprise: OIDC (JWT) authentication
+//
+// Assumes (already configured):
+//   - Vault Enterprise namespace : AUT
+//   - JWT auth mount             : jwt   (login endpoint: auth/jwt/login)
+//   - Vault role                 : ci    ("jwt/ci")
+//   - OIDC Provider plugin        : enabled; ID-token credential id "vault-oidc"
+//     whose audience matches the role's bound_audiences (here: "vault-AUT").
+//
+// The build mints a short-lived OIDC JWT, exchanges it at auth/jwt/login for a
+// Vault token, and proves the token works with a KV v2 read. No static secret
+// is stored in Jenkins.
+// ---------------------------------------------------------------------------
+
+pipeline {
+  agent any
+
+  environment {
+    VAULT_ADDR      = 'https://vault-vip.corp.example.com:8200'
+    VAULT_NAMESPACE = 'AUT'          // Vault Enterprise namespace
+    VAULT_JWT_PATH  = 'jwt'          // jwt auth mount  -> auth/jwt/login
+    VAULT_ROLE      = 'ci'           // role at that mount ("jwt/ci")
+    // Optional: pin a private CA bundle for the Vault endpoint
+    // VAULT_CACERT  = '/etc/pki/vault/ca.crt'
+  }
+
+  options {
+    // timestamps() removed — it needs the Timestamper plugin. Re-add it if that
+    // plugin is installed; otherwise leave it out so this runs on a bare controller.
+    disableConcurrentBuilds()
+  }
+
+  stages {
+
+    stage('Authenticate to Vault (OIDC)') {
+      steps {
+        // The OIDC Provider plugin's ID-token credential is a "secret text"
+        // (String) credential, so bind it with string(...). It mints a per-build
+        // JWT and exposes it as $ID_TOKEN.
+        withCredentials([string(credentialsId: 'vault-oidc', variable: 'ID_TOKEN')]) {
+          script {
+            // Never trace the token or the response.
+            sh 'set +x'
+            def vaultToken = sh(
+              returnStdout: true,
+              script: '''
+                set -euo pipefail
+                vault write -field=token "auth/${VAULT_JWT_PATH}/login" \
+                    role="${VAULT_ROLE}" \
+                    jwt="${ID_TOKEN}"
+              '''
+            ).trim()
+            // Hand the token to later stages without printing it.
+            env.VAULT_TOKEN = vaultToken
+            echo "Vault login OK via auth/${VAULT_JWT_PATH}/login (role=${VAULT_ROLE})"
+          }
+        }
+      }
+    }
+
+    stage('Verify token / read a secret') {
+      steps {
+        sh '''
+          set -euo pipefail
+          set +x
+          export VAULT_TOKEN
+
+          # Confirms the token is valid and shows its policies + short TTL.
+          vault token lookup -format=json \
+            | jq '{policies: .data.policies, ttl: .data.ttl}'
+
+          # Example KV v2 read scoped to this pipeline's app path.
+          DB_PASS=$(vault kv get -field=password secret/ci/payments/db)
+          echo "Fetched secret (length=${#DB_PASS}) — value not printed."
+          # ... use $DB_PASS here; do not echo it.
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      // Best-effort: revoke the build's Vault token so it dies with the build.
+      sh '''
+        set +e
+        if [ -n "${VAULT_TOKEN:-}" ]; then
+          VAULT_TOKEN="${VAULT_TOKEN}" vault token revoke -self >/dev/null 2>&1 || true
+        fi
+      '''
+      deleteDir()   // core Pipeline step (no plugin). cleanWs() needs the ws-cleanup plugin.
+    }
+  }
+}

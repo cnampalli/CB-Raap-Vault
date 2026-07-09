@@ -1,0 +1,151 @@
+// ---------------------------------------------------------------------------
+// CloudBees CI → Vault Enterprise: OIDC (JWT) auth WITHOUT the vault CLI
+//
+// Uses Vault's HTTP API via the HTTP Request plugin + Pipeline Utility Steps
+// (readJSON/writeJSON). No `vault`, `curl`, or `jq` binary required on the agent.
+//
+// Required plugins:
+//   - HTTP Request plugin        (httpRequest step)
+//   - Pipeline Utility Steps     (readJSON / writeJSON)
+//   - OpenID Connect Provider    (ID-token = "secret text"/String credential; bind with string(...))
+//
+// Assumes: namespace AUT, jwt auth mount "jwt", role "ci" ("jwt/ci"),
+//          ID-token credential "vault-oidc" (audience == role bound_audiences).
+//
+// TLS note: for a private CA, import the Vault endpoint's CA into the Jenkins
+// truststore (Manage Jenkins) rather than using ignoreSslErrors.
+//
+// This variant is fully plugin-free for JSON: it uses Groovy's built-in
+// JsonSlurperClassic instead of readJSON/writeJSON (Pipeline Utility Steps).
+// NOTE: `new groovy.json.JsonSlurperClassic()` in a sandboxed Jenkinsfile may
+// require a one-time approval in Manage Jenkins -> In-process Script Approval,
+// or place this pipeline in a *trusted* shared library to avoid the prompt.
+// ---------------------------------------------------------------------------
+
+// Parse JSON without any plugin. JsonSlurperClassic (not JsonSlurper) returns
+// CPS-serializable maps, avoiding NotSerializableException across steps.
+@NonCPS
+def parseJson(String s) { new groovy.json.JsonSlurperClassic().parseText(s) }
+
+// Decode a base64url segment (JWT header/payload) without java.lang.Math,
+// so it needs no script-approval. Padding is plain modulo arithmetic.
+@NonCPS
+def b64urlDecode(String s) {
+  s = s.replace('-', '+').replace('_', '/')
+  int rem = s.length() % 4
+  if (rem == 2) s += '=='
+  else if (rem == 3) s += '='
+  new String(s.decodeBase64())
+}
+
+pipeline {
+  agent any
+
+  environment {
+    VAULT_ADDR      = 'https://vault-vip.corp.example.com:8200'
+    VAULT_NAMESPACE = 'AUT'
+    VAULT_JWT_PATH  = 'jwt'   // auth/jwt/login
+    VAULT_ROLE      = 'ci'
+  }
+
+  options { disableConcurrentBuilds() }   // timestamps() omitted — it needs the Timestamper plugin
+
+  parameters {
+    // OFF by default. When true, the debug stage prints the OIDC JWT.
+    // WARNING: the JWT is a live bearer credential until it expires.
+    booleanParam(name: 'PRINT_JWT', defaultValue: false,
+                 description: 'DEBUG ONLY: print the OIDC JWT + decoded claims to the build log')
+  }
+
+  stages {
+
+    stage('DEBUG: print OIDC JWT') {
+      when { expression { return params.PRINT_JWT } }
+      steps {
+        withCredentials([string(credentialsId: 'vault-oidc', variable: 'ID_TOKEN')]) {
+          script {
+            echo '''*** WARNING: printing a live bearer token. Anyone with log access can
+                     replay it to Vault until it expires. Debug use only. ***'''
+
+            // (a) Raw JWT. Jenkins masks the exact token string, so emit a
+            //     base64 form (does NOT match the masked literal) -> decode offline
+            //     with:  echo '<value>' | base64 -d
+            echo 'OIDC JWT (base64-wrapped): ' + env.ID_TOKEN.bytes.encodeBase64().toString()
+
+            // (b) Decoded header + claims (not the signature). Uses the Math-free
+            //     b64urlDecode helper — no java.lang.Math, so no extra script approval.
+            def parts = env.ID_TOKEN.tokenize('.')
+            echo 'OIDC JWT header:  ' + b64urlDecode(parts[0])
+            echo 'OIDC JWT claims:  ' + b64urlDecode(parts[1])
+          }
+        }
+      }
+    }
+
+    stage('Authenticate to Vault (OIDC, HTTP API)') {
+      steps {
+        withCredentials([string(credentialsId: 'vault-oidc', variable: 'ID_TOKEN')]) {
+          script {
+            // Exchange the OIDC JWT for a Vault token — response body NOT logged.
+            def loginResp = httpRequest(
+              url: "${env.VAULT_ADDR}/v1/auth/${env.VAULT_JWT_PATH}/login",
+              httpMode: 'POST',
+              contentType: 'APPLICATION_JSON',
+              customHeaders: [[name: 'X-Vault-Namespace', value: env.VAULT_NAMESPACE]],
+              // Plain-string JSON body (no writeJSON dependency). The JWT is
+              // [A-Za-z0-9-_.] only, so no escaping is required.
+              requestBody: """{"role":"${env.VAULT_ROLE}","jwt":"${env.ID_TOKEN}"}""",
+              validResponseCodes: '200',
+              consoleLogResponseBody: false,
+              quiet: true
+            )
+            def auth = parseJson(loginResp.content).auth
+            env.VAULT_TOKEN = auth.client_token           // kept in memory, not printed
+            echo "Vault login OK (role=${env.VAULT_ROLE}, policies=${auth.policies}, ttl=${auth.lease_duration}s)"
+          }
+        }
+      }
+    }
+
+    stage('Read a secret (KV v2, HTTP API)') {
+      steps {
+        script {
+          def kvResp = httpRequest(
+            url: "${env.VAULT_ADDR}/v1/secret/data/ci/payments/db",
+            httpMode: 'GET',
+            customHeaders: [
+              [name: 'X-Vault-Token',     value: env.VAULT_TOKEN, maskValue: true],
+              [name: 'X-Vault-Namespace', value: env.VAULT_NAMESPACE]
+            ],
+            validResponseCodes: '200',
+            consoleLogResponseBody: false,
+            quiet: true
+          )
+          def dbPass = parseJson(kvResp.content).data.data.password
+          echo "Fetched secret (length=${dbPass.length()}) — value not printed."
+          // ... use dbPass here; never echo it.
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      script {
+        // Revoke the build token so it dies with the build.
+        if (env.VAULT_TOKEN) {
+          httpRequest(
+            url: "${env.VAULT_ADDR}/v1/auth/token/revoke-self",
+            httpMode: 'POST',
+            customHeaders: [
+              [name: 'X-Vault-Token',     value: env.VAULT_TOKEN, maskValue: true],
+              [name: 'X-Vault-Namespace', value: env.VAULT_NAMESPACE]
+            ],
+            validResponseCodes: '100:599', consoleLogResponseBody: false, quiet: true
+          )
+        }
+      }
+      deleteDir()   // core Pipeline step (no plugin). cleanWs() needs the ws-cleanup plugin.
+    }
+  }
+}
