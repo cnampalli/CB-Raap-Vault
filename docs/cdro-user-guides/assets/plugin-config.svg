@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="The ZeroTrust plugin configuration fields, grouped into Connect to Vault, Match the Vault mount, Sign the token, and Build the claims. Each group lists its fields and recommended values.">
+  <rect x="0" y="0" width="960" height="560" rx="16" fill="#ffffff"/>
+  <rect x="0.5" y="0.5" width="959" height="559" rx="16" fill="none" stroke="#e2e8f0"/>
+
+  <text x="32" y="46" font-size="23" font-weight="700" fill="#0f172a">The ZeroTrust plugin configuration, decoded</text>
+  <text x="32" y="72" font-size="14" fill="#64748b">Plugin Management &#8594; Configurations &#8594; New Configuration. Four jobs, one form.</text>
+
+  <!-- Group 1: Connect -->
+  <rect x="32" y="96" width="448" height="196" rx="12" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="52" y="124" font-size="15" font-weight="700" fill="#1e40af">1 &#183; Connect to Vault</text>
+  <line x1="52" y1="134" x2="460" y2="134" stroke="#bfdbfe"/>
+  <text x="52" y="160" font-size="12.5" font-weight="700" fill="#334155">Endpoint</text>
+  <text x="230" y="160" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#1d4ed8">https://&lt;vault-vip&gt;:8200</text>
+  <text x="52" y="186" font-size="12.5" font-weight="700" fill="#334155">Namespace</text>
+  <text x="230" y="186" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#1d4ed8">AUT</text>
+  <text x="52" y="212" font-size="12.5" font-weight="700" fill="#334155">secret_mount_path</text>
+  <text x="230" y="212" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#1d4ed8">secret</text>
+  <text x="52" y="238" font-size="12.5" font-weight="700" fill="#334155">Name / Project</text>
+  <text x="230" y="238" font-size="12" fill="#475569">this config's label &amp; scope</text>
+  <text x="52" y="266" font-size="11.5" fill="#64748b">Must match the Vault cluster, namespace and KV mount exactly.</text>
+
+  <!-- Group 2: Match the mount -->
+  <rect x="496" y="96" width="432" height="196" rx="12" fill="#ecfeff" stroke="#0891b2"/>
+  <text x="516" y="124" font-size="15" font-weight="700" fill="#0e7490">2 &#183; Match the Vault mount</text>
+  <line x1="516" y1="134" x2="908" y2="134" stroke="#a5f3fc"/>
+  <text x="516" y="160" font-size="12.5" font-weight="700" fill="#334155">Provider</text>
+  <text x="690" y="160" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#0e7490">jwt-cdro</text>
+  <text x="516" y="176" font-size="11" fill="#64748b">= the Vault JWT auth mount path</text>
+  <text x="516" y="204" font-size="12.5" font-weight="700" fill="#334155">Role</text>
+  <text x="690" y="204" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#0e7490">cdro-zerotrust</text>
+  <text x="516" y="220" font-size="11" fill="#64748b">= the Vault JWT role name</text>
+  <text x="516" y="248" font-size="12.5" font-weight="700" fill="#334155">Issuer</text>
+  <text x="690" y="248" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#0e7490">ZeroTrust</text>
+  <text x="516" y="264" font-size="11" fill="#b91c1c">MUST equal the mount's bound_issuer</text>
+
+  <!-- Group 3: Sign -->
+  <rect x="32" y="308" width="448" height="220" rx="12" fill="#eef2ff" stroke="#4f46e5"/>
+  <text x="52" y="336" font-size="15" font-weight="700" fill="#3730a3">3 &#183; Sign the token</text>
+  <line x1="52" y1="346" x2="460" y2="346" stroke="#c7d2fe"/>
+  <text x="52" y="372" font-size="12.5" font-weight="700" fill="#334155">Credential</text>
+  <text x="230" y="372" font-size="12" fill="#4f46e5">CD/RO cred = PRIVATE key</text>
+  <text x="52" y="388" font-size="11" fill="#64748b">lock the ACL; only this config reads it</text>
+  <text x="52" y="416" font-size="12.5" font-weight="700" fill="#334155">Algorithm</text>
+  <text x="230" y="416" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#4f46e5">RS256</text>
+  <text x="52" y="432" font-size="11" fill="#b91c1c">asymmetric only &#8212; never HS*</text>
+  <text x="52" y="460" font-size="12.5" font-weight="700" fill="#334155">Token lifetime</text>
+  <text x="230" y="460" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#4f46e5">900</text>
+  <text x="270" y="460" font-size="11.5" fill="#64748b">seconds &#8212; keep it short</text>
+  <text x="52" y="488" font-size="12.5" font-weight="700" fill="#334155">debugLevel</text>
+  <text x="230" y="488" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#4f46e5">info</text>
+  <text x="270" y="488" font-size="11.5" fill="#b91c1c">debug/trace can leak the token</text>
+  <rect x="52" y="500" width="408" height="16" rx="8" fill="#eef2ff"/>
+  <text x="256" y="512" font-size="10.5" fill="#4f46e5" text-anchor="middle">Public half of this key pair &#8594; Vault mount (see infographic above)</text>
+
+  <!-- Group 4: Claims -->
+  <rect x="496" y="308" width="432" height="220" rx="12" fill="#ecfdf5" stroke="#059669"/>
+  <text x="516" y="336" font-size="15" font-weight="700" fill="#065f46">4 &#183; Build the claims (customClaims)</text>
+  <line x1="516" y1="346" x2="908" y2="346" stroke="#a7f3d0"/>
+  <text x="516" y="366" font-size="11.5" fill="#475569">JSON that becomes the JWT payload. This is where</text>
+  <text x="516" y="382" font-size="11.5" fill="#475569">the audience and the release scope are set:</text>
+  <rect x="516" y="392" width="392" height="94" rx="8" fill="#0f172a"/>
+  <text x="532" y="414" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#e2e8f0">{</text>
+  <text x="546" y="432" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#7dd3fc">"sub"</text>
+  <text x="588" y="432" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#e2e8f0">: "$[/myJob/launchedByUser]",</text>
+  <text x="546" y="450" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#7dd3fc">"aud"</text>
+  <text x="588" y="450" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#fca5a5">: "vault-AUT",</text>
+  <text x="546" y="468" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#7dd3fc">"job_name"</text>
+  <text x="612" y="468" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#86efac">: "$[/myRelease/name]"</text>
+  <text x="532" y="480" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#e2e8f0">}</text>
+  <text x="516" y="506" font-size="11" fill="#b45309"><tspan font-weight="700">aud</tspan> &#8594; role's bound_audiences &#183; <tspan font-weight="700">job_name</tspan> &#8594; the release scope</text>
+  <text x="516" y="521" font-size="11" fill="#64748b">Confirm the real values by decoding one test token first.</text>
+</svg>

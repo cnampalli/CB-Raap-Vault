@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 620" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="End-to-end zero-trust flow: CD/RO mints a JWT with the ZeroTrust plugin, Vault validates it with a static public key and returns a short-lived token, then the release either reads its own KV secret (Pattern A) or hands the JWT to AAP for dynamic secrets and signed SSH (Pattern B).">
+  <rect x="0" y="0" width="960" height="620" rx="16" fill="#ffffff"/>
+  <rect x="0.5" y="0.5" width="959" height="619" rx="16" fill="none" stroke="#e2e8f0"/>
+
+  <!-- Title -->
+  <text x="32" y="46" font-size="24" font-weight="700" fill="#0f172a">CD/RO &#8594; Vault &#8594; AAP: the whole picture</text>
+  <text x="32" y="72" font-size="14" fill="#64748b">One release, every use case. No password or long-lived token is ever stored in CD/RO.</text>
+
+  <!-- ============ CONTROL PLANE band ============ -->
+  <text x="32" y="112" font-size="12" font-weight="700" fill="#4f46e5" letter-spacing="1.5">CONTROL PLANE &#183; PROVING IDENTITY</text>
+
+  <!-- CD/RO box -->
+  <rect x="32" y="128" width="250" height="132" rx="12" fill="#eef2ff" stroke="#4f46e5"/>
+  <text x="52" y="156" font-size="16" font-weight="700" fill="#3730a3">CloudBees CD/RO</text>
+  <text x="52" y="178" font-size="12.5" fill="#334155">Release runs a procedure step.</text>
+  <text x="52" y="200" font-size="12.5" fill="#334155">The <tspan font-weight="700">ZeroTrust plugin</tspan> mints &amp;</text>
+  <text x="52" y="217" font-size="12.5" fill="#334155">signs a short-lived JWT locally:</text>
+  <rect x="52" y="226" width="210" height="24" rx="6" fill="#ffffff" stroke="#c7d2fe"/>
+  <text x="62" y="242" font-size="11.5" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#4f46e5">iss=ZeroTrust &#183; job_name=&lt;release&gt;</text>
+
+  <!-- arrow CD/RO -> Vault -->
+  <line x1="282" y1="194" x2="368" y2="194" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#ah)"/>
+  <text x="286" y="184" font-size="11" fill="#475569">login (JWT)</text>
+
+  <!-- Vault box -->
+  <rect x="370" y="128" width="270" height="132" rx="12" fill="#ecfeff" stroke="#0891b2"/>
+  <text x="390" y="156" font-size="16" font-weight="700" fill="#0e7490">HashiCorp Vault &#183; namespace AUT</text>
+  <text x="390" y="180" font-size="12.5" fill="#334155">Validates the JWT with a <tspan font-weight="700">static</tspan></text>
+  <text x="390" y="197" font-size="12.5" fill="#334155"><tspan font-weight="700">public key</tspan> &#8212; no JWKS, no discovery,</text>
+  <text x="390" y="214" font-size="12.5" fill="#334155">no call back to CD/RO.</text>
+  <rect x="390" y="224" width="230" height="26" rx="6" fill="#ffffff" stroke="#a5f3fc"/>
+  <text x="400" y="241" font-size="11.5" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#0e7490">&#8594; short-lived token (&#8804; 15 min)</text>
+
+  <!-- arrow Vault -> branch -->
+  <line x1="640" y1="194" x2="726" y2="194" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#ah)"/>
+
+  <!-- token badge -->
+  <rect x="726" y="150" width="202" height="90" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="827" y="178" font-size="13" font-weight="700" fill="#0f172a" text-anchor="middle">The token is scoped</text>
+  <text x="827" y="198" font-size="12" fill="#475569" text-anchor="middle">to only this release's</text>
+  <text x="827" y="215" font-size="12" fill="#475569" text-anchor="middle">secrets, and expires</text>
+  <text x="827" y="232" font-size="12" fill="#475569" text-anchor="middle">on its own.</text>
+
+  <!-- divider -->
+  <line x1="32" y1="292" x2="928" y2="292" stroke="#e2e8f0" stroke-dasharray="4 4"/>
+
+  <!-- ============ USE CASES band ============ -->
+  <text x="32" y="322" font-size="12" font-weight="700" fill="#059669" letter-spacing="1.5">WHAT THE RELEASE DOES &#183; THE USE CASES</text>
+
+  <!-- Pattern A card -->
+  <rect x="32" y="340" width="430" height="236" rx="12" fill="#ecfdf5" stroke="#059669"/>
+  <circle cx="60" cy="370" r="15" fill="#059669"/>
+  <text x="60" y="375" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">A</text>
+  <text x="86" y="368" font-size="15" font-weight="700" fill="#065f46">Pattern A &#8212; CD/RO reads its own secret</text>
+  <text x="86" y="386" font-size="12" fill="#047857">The plugin logs in and reads a KV v2 secret.</text>
+
+  <rect x="52" y="404" width="390" height="150" rx="10" fill="#ffffff" stroke="#a7f3d0"/>
+  <text x="70" y="428" font-size="12.5" font-weight="700" fill="#065f46">Reads:</text>
+  <text x="120" y="428" font-size="12" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#0f172a">secret/data/cdr/&lt;release&gt;/&#8230;</text>
+  <text x="70" y="452" font-size="12.5" font-weight="700" fill="#065f46">3 tiers, same result &#8212; pick your comfort level:</text>
+  <rect x="70" y="464" width="112" height="30" rx="15" fill="#ecfdf5" stroke="#10b981"/>
+  <text x="126" y="483" font-size="11.5" fill="#065f46" text-anchor="middle" font-weight="600">1 &#183; curl</text>
+  <rect x="190" y="464" width="112" height="30" rx="15" fill="#ecfdf5" stroke="#10b981"/>
+  <text x="246" y="483" font-size="11.5" fill="#065f46" text-anchor="middle" font-weight="600">2 &#183; native</text>
+  <rect x="310" y="464" width="112" height="30" rx="15" fill="#ecfdf5" stroke="#10b981"/>
+  <text x="366" y="483" font-size="11.5" fill="#065f46" text-anchor="middle" font-weight="600">3 &#183; vault CLI</text>
+  <text x="70" y="518" font-size="11.5" fill="#475569">Result lands in a CD/RO credential. The value is</text>
+  <text x="70" y="534" font-size="11.5" fill="#475569">never printed. Audit shows <tspan font-weight="700" fill="#065f46">CD/RO</tspan> as the reader.</text>
+
+  <!-- Pattern B card -->
+  <rect x="498" y="340" width="430" height="236" rx="12" fill="#fffbeb" stroke="#d97706"/>
+  <circle cx="526" cy="370" r="15" fill="#d97706"/>
+  <text x="526" y="375" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">B</text>
+  <text x="552" y="368" font-size="15" font-weight="700" fill="#92400e">Pattern B &#8212; hand the JWT to AAP</text>
+  <text x="552" y="386" font-size="12" fill="#b45309">For dynamic secrets &amp; signed SSH to servers.</text>
+
+  <rect x="518" y="404" width="390" height="150" rx="10" fill="#ffffff" stroke="#fcd34d"/>
+  <!-- mini flow -->
+  <rect x="534" y="420" width="118" height="42" rx="8" fill="#fffbeb" stroke="#f59e0b"/>
+  <text x="593" y="438" font-size="11.5" font-weight="700" fill="#92400e" text-anchor="middle">CD/RO mints</text>
+  <text x="593" y="453" font-size="11" fill="#b45309" text-anchor="middle">JWT &#8594; property</text>
+  <line x1="652" y1="441" x2="676" y2="441" stroke="#f59e0b" stroke-width="2" marker-end="url(#ah2)"/>
+  <rect x="678" y="420" width="118" height="42" rx="8" fill="#fffbeb" stroke="#f59e0b"/>
+  <text x="737" y="438" font-size="11.5" font-weight="700" fill="#92400e" text-anchor="middle">AAP logs in</text>
+  <text x="737" y="453" font-size="11" fill="#b45309" text-anchor="middle">with that JWT</text>
+  <text x="822" y="446" font-size="11.5" fill="#b45309">&#8594;</text>
+  <rect x="812" y="420" width="80" height="42" rx="8" fill="#fffbeb" stroke="#f59e0b"/>
+  <text x="852" y="437" font-size="10.5" font-weight="700" fill="#92400e" text-anchor="middle">dynamic</text>
+  <text x="852" y="452" font-size="10.5" fill="#b45309" text-anchor="middle">secrets</text>
+
+  <text x="534" y="490" font-size="11.5" fill="#475569">AAP does its <tspan font-weight="700" fill="#92400e">own</tspan> Vault exchange (its own role/</text>
+  <text x="534" y="506" font-size="11.5" fill="#475569">policy) and connects to managed nodes with a</text>
+  <text x="534" y="522" font-size="11.5" fill="#475569"><tspan font-weight="700" fill="#92400e">short-lived signed SSH certificate</tspan> &#8212; no static key.</text>
+  <text x="534" y="540" font-size="11.5" fill="#475569">CD/RO never sees the secret.</text>
+
+  <!-- markers -->
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="ah2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+</svg>
