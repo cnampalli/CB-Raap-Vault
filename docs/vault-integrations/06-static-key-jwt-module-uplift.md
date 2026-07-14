@@ -55,13 +55,16 @@ resource "vault_jwt_auth_backend" "jwt" {
   path      = var.path
   type      = "jwt"
 
-  # Exactly one trust root is used per provider; the unused ones stay null/empty,
-  # which the Vault provider treats as unset.
+  # Exactly one trust root is used per provider. oidc_discovery_url / jwks_url /
+  # jwt_validation_pubkeys are mutually ConflictsWith in the Vault provider, and an
+  # EMPTY LIST still counts as "configured" — so the unused list attrs must be null,
+  # not []. Otherwise an existing OIDC provider errors with
+  # "oidc_discovery_url conflicts with jwt_validation_pubkeys".
   oidc_discovery_url     = var.oidc_discovery_url
   jwks_url               = var.jwks_url
   jwks_ca_pem            = var.jwks_ca_pem
-  jwt_validation_pubkeys = var.jwt_validation_pubkeys   # static keys (CDRO ZeroTrust)
-  jwt_supported_algs     = var.jwt_supported_algs
+  jwt_validation_pubkeys = length(var.jwt_validation_pubkeys) > 0 ? var.jwt_validation_pubkeys : null
+  jwt_supported_algs     = length(var.jwt_supported_algs) > 0 ? var.jwt_supported_algs : null
   bound_issuer           = var.bound_issuer
 
   lifecycle {
@@ -94,6 +97,14 @@ resource "vault_jwt_auth_backend_role" "roles" {
   token_max_ttl     = try(each.value.token_max_ttl, each.value.ttl)
 }
 ```
+
+> **Gotcha — `ConflictsWith` + empty list.** `oidc_discovery_url`, `jwks_url`, and
+> `jwt_validation_pubkeys` are mutually `ConflictsWith` in the Vault provider, and an **empty list still
+> counts as "configured."** If the module passed `jwt_validation_pubkeys = var.jwt_validation_pubkeys`
+> (default `[]`) directly, every existing **OIDC** provider would fail at plan/validate with
+> `oidc_discovery_url conflicts with jwt_validation_pubkeys` — because it now has *both* a discovery URL
+> and an (empty) pubkeys list. That is why the list trust roots above are coalesced to **`null`** when
+> empty (`length(...) > 0 ? ... : null`). `null` means "unset"; `[]` does not.
 
 ### 2.2 `terraform/modules/vault-auth-jwt/variables.tf` (full replacement)
 
