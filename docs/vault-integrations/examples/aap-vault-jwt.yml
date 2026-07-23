@@ -1,0 +1,173 @@
+---
+# ===========================================================================
+# AAP job template playbook — consume a CDRO ZeroTrust JWT, log in to Vault,
+# fetch secrets, use them.  (Primary version: community.hashi_vault collection)
+# ===========================================================================
+#
+# WHERE THIS RUNS
+#   An Ansible Automation Platform (AAP) *job template* runs this playbook.
+#   A CloudBees CD/RO pipeline task, using the EC-AnsibleTower plugin's
+#   "Launch a Job Template" procedure, launches that job template and passes
+#   the JWT (minted by the CDRO ZeroTrust plugin) as an extra variable:
+#
+#       Job template parameters:
+#       { "extra_vars": {
+#           "vault_jwt":   "$[/myPipelineRuntime/jwtToken]",
+#           "vault_role":  "aap-consumer",
+#           "release":     "$[/myRelease/name]"
+#       } }
+#
+#   => AAP receives `vault_jwt` (+ friends) as extra_vars for this run.
+#
+# TRUST MODEL
+#   The JWT is signed locally by the CDRO ZeroTrust plugin (iss=ZeroTrust) and
+#   validated by Vault against a STATIC public key (jwt_validation_pubkeys) on
+#   the `jwt-cdro` mount. AAP does NOT need its own standing Vault identity for
+#   these secrets — it borrows CDRO's short-lived, release-scoped identity for
+#   the duration of one job. See ../03-cdro-zerotrust-jwt.md §6 and
+#   ../07-aap-ansibletower-jwt-consumer.md.
+#
+# PREREQUISITE ON THE JOB TEMPLATE (critical, easy to miss):
+#   The job template MUST have **Variables → "Prompt on launch"** enabled
+#   (ask_variables_on_launch=true) OR expose these vars via a Survey, otherwise
+#   AAP silently DROPS extra_vars sent through the API/plugin.
+#
+# COLLECTION REQUIREMENT
+#   community.hashi_vault (bundled in most AAP execution environments). If your
+#   EE is airgapped and lacks it, use the dependency-free sibling playbook:
+#   aap-vault-jwt-nocollection.yml (raw REST via ansible.builtin.uri).
+#
+# SECURITY
+#   - no_log: true on every task that touches the JWT, the Vault token, or a
+#     secret value. Do NOT remove it — Debug/Trace job output would leak creds.
+#   - The playbook revokes its own Vault token at the end (revoke-self).
+# ===========================================================================
+
+- name: Consume CDRO ZeroTrust JWT and fetch Vault secrets
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # --- passed in by the EC-AnsibleTower plugin as extra_vars ---------------
+    # vault_jwt   : the CDRO-minted JWT (REQUIRED; never defaulted)
+    # vault_role  : the Vault JWT role to assume (default below)
+    # release     : release name, used to scope the KV path
+    vault_role: "aap-consumer"
+
+    # --- environment (override per site) ------------------------------------
+    vault_addr: "https://vault-vip.corp.example.com:8200"
+    vault_namespace: "AUT"
+    vault_jwt_mount: "jwt-cdro"          # JWT auth mount that trusts iss=ZeroTrust
+    vault_kv_mount: "secret"             # KV v2 engine mount
+    vault_validate_certs: true           # false only for self-signed lab certs
+    # dynamic DB secrets engine role (Pattern: dynamic secrets over the hand-off)
+    vault_db_mount: "database"
+    vault_db_role: "app-readonly"
+
+  pre_tasks:
+    - name: Fail fast if the JWT was not provided
+      ansible.builtin.assert:
+        that:
+          - vault_jwt is defined
+          - vault_jwt | length > 0
+        fail_msg: >-
+          'vault_jwt' extra_var is missing. Confirm the CDRO ZeroTrust step
+          stored the token in the pipeline property and that the job template
+          has "Prompt on launch" enabled for Variables.
+      no_log: true
+
+  tasks:
+    # ---------------------------------------------------------------------
+    # 1. Exchange the JWT for a short-lived Vault token (ONE login)
+    # ---------------------------------------------------------------------
+    - name: Log in to Vault with the CDRO-issued JWT
+      community.hashi_vault.vault_login:
+        url: "{{ vault_addr }}"
+        namespace: "{{ vault_namespace }}"
+        validate_certs: "{{ vault_validate_certs }}"
+        auth_method: jwt
+        mount_point: "{{ vault_jwt_mount }}"
+        role_id: "{{ vault_role }}"      # for jwt auth this is the Vault ROLE name
+        jwt: "{{ vault_jwt }}"
+      register: vault_login
+      no_log: true
+
+    - name: Capture the client token for reuse
+      ansible.builtin.set_fact:
+        vault_token: "{{ vault_login.login.auth.client_token }}"
+      no_log: true
+
+    # ---------------------------------------------------------------------
+    # 2a. KV v2 read — release-scoped static secret
+    #     Policy templates the path to cdr/<release>/*, so a token minted for
+    #     release X can only read release X's secrets.
+    # ---------------------------------------------------------------------
+    - name: Read the release database KV secret
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ vault_addr }}"
+        namespace: "{{ vault_namespace }}"
+        validate_certs: "{{ vault_validate_certs }}"
+        engine_mount_point: "{{ vault_kv_mount }}"
+        path: "cdr/{{ release }}/db"
+        auth_method: token
+        token: "{{ vault_token }}"
+      register: kv
+      no_log: true
+
+    # ---------------------------------------------------------------------
+    # 2b. Dynamic secret — short-lived DB credentials generated on demand.
+    #     This is the reason to hand a JWT to AAP rather than reading KV in
+    #     CDRO: the in-CDRO plugin path is KV-only; dynamic engines are reached
+    #     here, on the consumer side (see 03 §6). Omit this block if unused.
+    # ---------------------------------------------------------------------
+    - name: Generate dynamic database credentials
+      community.hashi_vault.vault_read:
+        url: "{{ vault_addr }}"
+        namespace: "{{ vault_namespace }}"
+        validate_certs: "{{ vault_validate_certs }}"
+        path: "{{ vault_db_mount }}/creds/{{ vault_db_role }}"
+        auth_method: token
+        token: "{{ vault_token }}"
+      register: dbcreds
+      no_log: true
+      # If you only use KV, delete this task and the "use dynamic creds" task.
+
+    # ---------------------------------------------------------------------
+    # 3. Use the secrets. Reference them as vars; never debug-print them.
+    #    Below is a safe demonstration that proves retrieval without leaking.
+    # ---------------------------------------------------------------------
+    - name: Prove the KV secret was retrieved (no value printed)
+      ansible.builtin.debug:
+        msg: "KV read OK — keys present: {{ kv.secret.keys() | list }}"
+
+    - name: Prove dynamic creds were issued (username only, no password)
+      ansible.builtin.debug:
+        msg: "Dynamic DB user issued: {{ dbcreds.data.data.username }}"
+      when: dbcreds is not skipped
+
+    # Example real usage (kept commented — adapt to your task):
+    # - name: Run the app deploy with the DB password
+    #   ansible.builtin.command: /opt/app/deploy.sh
+    #   environment:
+    #     DB_USER: "{{ dbcreds.data.data.username }}"
+    #     DB_PASS: "{{ dbcreds.data.data.password }}"
+    #   no_log: true
+
+  post_tasks:
+    # ---------------------------------------------------------------------
+    # 4. Revoke this run's Vault token (belt-and-suspenders; it also expires
+    #    on its own short TTL). Dynamic DB creds revoke when their lease ends.
+    # ---------------------------------------------------------------------
+    - name: Revoke the Vault token (revoke-self)
+      community.hashi_vault.vault_write:
+        url: "{{ vault_addr }}"
+        namespace: "{{ vault_namespace }}"
+        validate_certs: "{{ vault_validate_certs }}"
+        path: "auth/token/revoke-self"
+        auth_method: token
+        token: "{{ vault_token }}"
+        data: {}
+      no_log: true
+      ignore_errors: true
+      when: vault_token is defined
