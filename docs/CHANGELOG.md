@@ -8,6 +8,38 @@ CloudBees CD/RO, and Ansible Automation Platform (AAP). Newest first.
 
 ---
 
+## 2026-07-14
+
+Added the **module-uplift runbook** that makes CDRO's static-key JWT auth expressible in Prescient
+Solutions' `vault-enterprise-terraform` (v2.0) repo. That repo's reusable `vault-auth-jwt` module only
+supported OIDC/JWKS **discovery**, so a discovery-less issuer like the CDRO **ZeroTrust** plugin
+(`iss=ZeroTrust`, locally-signed) could not be configured — and `configs/towers/cnd.yaml` even pointed
+the `cdro` provider at a non-existent `/.well-known/openid-configuration`.
+
+### Added
+- **New reference guide** `docs/vault-integrations/06-static-key-jwt-module-uplift.md`: root-cause table,
+  a **backward-compatible** rewrite of the `vault-auth-jwt` module (adds `jwt_validation_pubkeys` /
+  `jwks_url` / `jwks_ca_pem` / `jwt_supported_algs` to the backend behind a one-trust-root `precondition`,
+  and `role_type` / `bound_subject` / `bound_claims_type` / `token_max_ttl` to the role), the `try(...)`
+  pass-throughs for both callers (`tower-namespaces` + `root-namespace`), the schema `anyOf` trust-root
+  change, the `validate-yaml.py` one-of-trust-roots change, and the corrected static-key `cnd.yaml`
+  `jwt.cdro` block. Includes static-check / plan / apply / end-to-end-login / rollback / rotation steps.
+- Linked from `00-architecture-overview.md` §9 guide index.
+
+### Changed / Decisions
+- **Static-key JWT is now a first-class, schema-validated config** alongside OIDC/JWKS. The existing OIDC
+  providers (Jenkins CI, GitLab) are unaffected — they still supply `oidc_discovery_url`.
+- Confirmed **no Vault provider bump** needed: `hashicorp/vault 3.23.0` already supports all the new
+  attributes.
+
+### Open follow-ups
+- Confirm the CDRO token's exact `aud` + `alg`/PEM from a real decoded token (still placeholders:
+  `aud=https://vault.prescient-solutions.internal:8200` per Prescient convention, `RS256`).
+- Flag the unrelated pre-existing `tests/validate-yaml.py` namespace-regex bug (`re.match(r'^[a-z0-9-]+, namespace)`
+  is missing its closing `$'`) to the CND team.
+
+---
+
 ## 2026-07-09
 
 Documented the **CloudBees CD/RO → Vault** integration via the custom, CloudBees-built **ZeroTrust**
