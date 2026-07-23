@@ -213,6 +213,7 @@ not by additional namespaces (per the agreed operating model).
 | `03-cdro-zerotrust-jwt.md` | ZeroTrust plugin (how it works), `jwt-cdro` mount/role/policy (static pubkey, release-scoped KV-v2 read-only), Pattern A in-CDRO read + Pattern B mint-and-hand-off, key rotation, limitations/risks; CI broker retained as §10 fallback |
 | `04-aap-cert-auth-ssh.md` | **AAP auth is now hardened AppRole** (see `../getting-started/04-aap-approle-ssh.md`); this file retains mTLS cert auth as the documented alternative + SSH role, node-trust playbook, 2.7 note |
 | `05-operations-appendix.md` | Firewall validation, TTL/SLA table, rotation & DR, troubleshooting, open follow-ups |
+| `06-static-key-jwt-module-uplift.md` | How to uplift Prescient's `vault-enterprise-terraform` `vault-auth-jwt` module to validate a JWT by **static public key** (`jwt_validation_pubkeys`) so CDRO's discovery-less ZeroTrust JWT works — full module files, schema/validator/config diffs, apply/verify/rollback |
 
 > **Beginner step-by-step version:** a task-oriented, copy-paste guide series lives in
 > [`../getting-started/`](../getting-started/) (README + 00–05). Use it to *do* the integration; use this
