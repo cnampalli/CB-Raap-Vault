@@ -198,6 +198,10 @@ CDRO mints a JWT and lets a downstream system do its own Vault exchange. This is
 secrets are reached — the KV-only limit applies to the in-CDRO procedures (Pattern A), not to the
 overall capability.
 
+> **Full worked AAP example** (EC-AnsibleTower plugin config, a dedicated `aap-consumer` Vault
+> role/policy, the CDRO DSL, and a runnable AAP playbook that logs in to Vault and fetches KV +
+> dynamic secrets) lives in [`07-aap-ansibletower-jwt-consumer.md`](07-aap-ansibletower-jwt-consumer.md).
+
 - **`IssueJwtAndStoreInProperty`** — mints a JWT with the given `customClaims` (e.g.
   `{"sub":"aap_job","aap_runner":"ip1,ip2"}`) and stores it in a CDRO **property**
   (e.g. `/myPipelineRuntime/jwtToken`).
