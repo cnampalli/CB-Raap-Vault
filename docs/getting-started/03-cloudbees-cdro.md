@@ -9,6 +9,11 @@ that release's secrets. No CI broker sits in the middle for KV reads anymore.
 > creates to prove who it is (see the [glossary](00-before-you-begin.md#5-mini-glossary)).
 > The ZeroTrust plugin is the thing that mints it for CD/RO.
 
+> **Prefer pictures?** A visual, multi-skill-level walkthrough of this exact flow — configuring the
+> plugin and running one release across every use case (including the AAP hand-off) — lives in
+> **[`../cdro-user-guides/`](../cdro-user-guides/)** (infographic-first). This page is the detailed
+> copy-paste version; that series is the "see it first" version.
+
 **Your versions:** CD/RO `2024.09.0.176472` (protocol 2.3) · ZeroTrust plugin `v1.0` ·
 Vault Enterprise `1.20.8+ent`, namespace `AUT`.
 

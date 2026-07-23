@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="Troubleshooting map. Common CD/RO to Vault symptoms, their likely cause, and the fix: signature or validation errors mean issuer or key mismatch; 403 permission denied means audience, claims, or policy scope; the wrong secret means a shared credential clobber; a secret appears in logs means debug level or an echoed value.">
+  <rect x="0" y="0" width="960" height="440" rx="16" fill="#ffffff"/>
+  <rect x="0.5" y="0.5" width="959" height="439" rx="16" fill="none" stroke="#e2e8f0"/>
+
+  <text x="32" y="46" font-size="23" font-weight="700" fill="#0f172a">When it doesn't work: symptom &#8594; cause &#8594; fix</text>
+  <text x="32" y="72" font-size="14" fill="#64748b">Four failures cover almost everything. Match the symptom, apply the fix.</text>
+
+  <!-- header row -->
+  <rect x="32" y="92" width="290" height="30" rx="6" fill="#f1f5f9"/>
+  <rect x="330" y="92" width="270" height="30" rx="6" fill="#f1f5f9"/>
+  <rect x="608" y="92" width="320" height="30" rx="6" fill="#f1f5f9"/>
+  <text x="46" y="112" font-size="12" font-weight="700" fill="#475569">SYMPTOM</text>
+  <text x="344" y="112" font-size="12" font-weight="700" fill="#475569">LIKELY CAUSE</text>
+  <text x="622" y="112" font-size="12" font-weight="700" fill="#475569">FIX</text>
+
+  <!-- row 1 -->
+  <rect x="32" y="130" width="290" height="66" rx="8" fill="#fef2f2" stroke="#fecaca"/>
+  <text x="46" y="156" font-size="12.5" font-weight="700" fill="#b91c1c">&#8220;signature/validation&#8221;</text>
+  <text x="46" y="176" font-size="11.5" fill="#7f1d1d">login rejected outright</text>
+  <text x="344" y="152" font-size="11.5" fill="#334155">Issuer or key mismatch:</text>
+  <text x="344" y="170" font-size="11" fill="#475569">plugin Issuer &#8800; bound_issuer,</text>
+  <text x="344" y="186" font-size="11" fill="#475569">or wrong / rotated public key</text>
+  <text x="622" y="150" font-size="11" fill="#334155">Issuer = ZeroTrust on both sides.</text>
+  <text x="622" y="167" font-size="11" fill="#334155">Re-check jwt_validation_pubkeys</text>
+  <text x="622" y="184" font-size="11" fill="#334155">matches the current private key.</text>
+
+  <!-- row 2 -->
+  <rect x="32" y="204" width="290" height="66" rx="8" fill="#fffbeb" stroke="#fde68a"/>
+  <text x="46" y="230" font-size="12.5" font-weight="700" fill="#92400e">403 permission denied</text>
+  <text x="46" y="250" font-size="11.5" fill="#78350f">login ok, read blocked</text>
+  <text x="344" y="226" font-size="11.5" fill="#334155">aud / claims / scope:</text>
+  <text x="344" y="244" font-size="11" fill="#475569">bound_audiences &#8800; token aud,</text>
+  <text x="344" y="260" font-size="11" fill="#475569">or reading another release's path</text>
+  <text x="622" y="224" font-size="11" fill="#334155">Decode the token; set</text>
+  <text x="622" y="241" font-size="11" fill="#334155">bound_audiences to its real aud.</text>
+  <text x="622" y="258" font-size="11" fill="#334155">Confirm the path is cdr/&lt;release&gt;.</text>
+
+  <!-- row 3 -->
+  <rect x="32" y="278" width="290" height="66" rx="8" fill="#eff6ff" stroke="#bfdbfe"/>
+  <text x="46" y="304" font-size="12.5" font-weight="700" fill="#1e40af">wrong / stale secret</text>
+  <text x="46" y="324" font-size="11.5" fill="#1e3a8a">a run reads another's value</text>
+  <text x="344" y="300" font-size="11.5" fill="#334155">Concurrency clobber:</text>
+  <text x="344" y="318" font-size="11" fill="#475569">two releases share one CD/RO</text>
+  <text x="344" y="334" font-size="11" fill="#475569">credential &#8212; last write wins</text>
+  <text x="622" y="298" font-size="11" fill="#334155">Give each release/pipeline its</text>
+  <text x="622" y="315" font-size="11" fill="#334155">own credential, or serialize with</text>
+  <text x="622" y="332" font-size="11" fill="#334155">a resource lock.</text>
+
+  <!-- row 4 -->
+  <rect x="32" y="352" width="290" height="66" rx="8" fill="#faf5ff" stroke="#e9d5ff"/>
+  <text x="46" y="378" font-size="12.5" font-weight="700" fill="#5b21b6">secret shows in a log</text>
+  <text x="46" y="398" font-size="11.5" fill="#4c1d95">value / token leaked</text>
+  <text x="344" y="374" font-size="11.5" fill="#334155">Debug level or echo:</text>
+  <text x="344" y="392" font-size="11" fill="#475569">debugLevel=debug/trace, or a</text>
+  <text x="344" y="408" font-size="11" fill="#475569">step printed the value</text>
+  <text x="622" y="372" font-size="11" fill="#334155">Set debugLevel=info. Use set +x;</text>
+  <text x="622" y="389" font-size="11" fill="#334155">mask the property; pass the JWT</text>
+  <text x="622" y="406" font-size="11" fill="#334155">via stdin, never on the CLI.</text>
+</svg>

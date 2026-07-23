@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="A single release that exercises every CD/RO to Vault use case as four stages: verify identity, read the app secret (Pattern A), deploy via AAP (Pattern B), and an optional CI-broker fallback. A guardrails band underneath lists the controls that apply to every stage.">
+  <rect x="0" y="0" width="960" height="500" rx="16" fill="#ffffff"/>
+  <rect x="0.5" y="0.5" width="959" height="499" rx="16" fill="none" stroke="#e2e8f0"/>
+
+  <text x="32" y="46" font-size="23" font-weight="700" fill="#0f172a">One release, every use case</text>
+  <text x="32" y="72" font-size="14" fill="#64748b">Wire these stages into a single CD/RO release to prove the whole integration end to end.</text>
+
+  <!-- connectors -->
+  <line x1="232" y1="200" x2="256" y2="200" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#rp)"/>
+  <line x1="456" y1="200" x2="480" y2="200" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#rp)"/>
+  <line x1="680" y1="200" x2="704" y2="200" stroke="#94a3b8" stroke-width="2.5" stroke-dasharray="5 4" marker-end="url(#rp)"/>
+
+  <!-- Stage 1 -->
+  <rect x="32" y="104" width="200" height="192" rx="12" fill="#f8fafc" stroke="#64748b"/>
+  <circle cx="60" cy="132" r="14" fill="#64748b"/>
+  <text x="60" y="137" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="82" y="137" font-size="14.5" font-weight="700" fill="#334155">Verify identity</text>
+  <text x="52" y="164" font-size="11.5" fill="#475569">Mint a test JWT in a</text>
+  <text x="52" y="180" font-size="11.5" fill="#475569">throwaway procedure.</text>
+  <text x="52" y="204" font-size="11.5" fill="#475569">Decode it &amp; confirm:</text>
+  <text x="52" y="224" font-size="11" fill="#334155">&#8226; iss = ZeroTrust</text>
+  <text x="52" y="242" font-size="11" fill="#334155">&#8226; asymmetric alg</text>
+  <text x="52" y="260" font-size="11" fill="#334155">&#8226; aud + job_name</text>
+  <text x="52" y="284" font-size="10.5" fill="#64748b">Never use a real secret here.</text>
+
+  <!-- Stage 2 -->
+  <rect x="256" y="104" width="200" height="192" rx="12" fill="#ecfdf5" stroke="#059669"/>
+  <circle cx="284" cy="132" r="14" fill="#059669"/>
+  <text x="284" y="137" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="306" y="137" font-size="14.5" font-weight="700" fill="#065f46">Read app secret</text>
+  <rect x="276" y="150" width="88" height="22" rx="11" fill="#d1fae5"/>
+  <text x="320" y="165" font-size="10.5" font-weight="700" fill="#065f46" text-anchor="middle">PATTERN A</text>
+  <text x="276" y="192" font-size="11.5" fill="#475569">CD/RO logs in &amp; reads</text>
+  <text x="276" y="208" font-size="11" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#065f46">cdr/&lt;release&gt;/db</text>
+  <text x="276" y="230" font-size="11.5" fill="#475569">A DB password / API key</text>
+  <text x="276" y="246" font-size="11.5" fill="#475569">into a CD/RO credential.</text>
+  <text x="276" y="270" font-size="11" fill="#334155">curl &#183; native &#183; vault CLI</text>
+  <text x="276" y="288" font-size="10.5" fill="#64748b">Value never printed.</text>
+
+  <!-- Stage 3 -->
+  <rect x="480" y="104" width="200" height="192" rx="12" fill="#fffbeb" stroke="#d97706"/>
+  <circle cx="508" cy="132" r="14" fill="#d97706"/>
+  <text x="508" y="137" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="530" y="137" font-size="14.5" font-weight="700" fill="#92400e">Deploy via AAP</text>
+  <rect x="500" y="150" width="88" height="22" rx="11" fill="#fde68a"/>
+  <text x="544" y="165" font-size="10.5" font-weight="700" fill="#92400e" text-anchor="middle">PATTERN B</text>
+  <text x="500" y="192" font-size="11.5" fill="#475569">Mint a JWT &#8594; property,</text>
+  <text x="500" y="208" font-size="11.5" fill="#475569">launch an AAP job with it.</text>
+  <text x="500" y="230" font-size="11.5" fill="#475569">AAP gets:</text>
+  <text x="500" y="250" font-size="11" fill="#334155">&#8226; dynamic DB cred</text>
+  <text x="500" y="268" font-size="11" fill="#334155">&#8226; signed SSH to nodes</text>
+  <text x="500" y="288" font-size="10.5" fill="#64748b">CD/RO never sees the secret.</text>
+
+  <!-- Stage 4 (optional) -->
+  <rect x="704" y="104" width="200" height="192" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-dasharray="5 4"/>
+  <circle cx="732" cy="132" r="14" fill="#94a3b8"/>
+  <text x="732" y="137" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="754" y="137" font-size="14.5" font-weight="700" fill="#475569">Fallback</text>
+  <rect x="724" y="150" width="96" height="22" rx="11" fill="#f1f5f9"/>
+  <text x="772" y="165" font-size="10" font-weight="700" fill="#64748b" text-anchor="middle">OPTIONAL</text>
+  <text x="724" y="192" font-size="11.5" fill="#475569">Only where the plugin</text>
+  <text x="724" y="208" font-size="11.5" fill="#475569">isn't installed / approved.</text>
+  <text x="724" y="232" font-size="11.5" fill="#475569">CD/RO triggers a CI</text>
+  <text x="724" y="248" font-size="11.5" fill="#475569">broker that reads &amp; wraps.</text>
+  <text x="724" y="272" font-size="10.5" fill="#b91c1c">Audit attributes read to CI,</text>
+  <text x="724" y="287" font-size="10.5" fill="#b91c1c">not CD/RO. Prefer 1&#8211;3.</text>
+
+  <!-- guardrails band -->
+  <rect x="32" y="320" width="896" height="152" rx="12" fill="#faf5ff" stroke="#7c3aed"/>
+  <text x="52" y="348" font-size="14.5" font-weight="700" fill="#5b21b6">&#9881; Guardrails on every stage (always on)</text>
+  <line x1="52" y1="358" x2="908" y2="358" stroke="#e9d5ff"/>
+
+  <g font-size="11.5" fill="#334155">
+    <text x="52" y="384">&#10003;&#160; Least privilege</text>
+    <text x="52" y="402" font-size="10.5" fill="#64748b">read-only, this release's path only</text>
+    <text x="248" y="384">&#10003;&#160; Short TTL</text>
+    <text x="248" y="402" font-size="10.5" fill="#64748b">token &#8804; 15 min, JWT ~900 s</text>
+    <text x="470" y="384">&#10003;&#160; No static secret</text>
+    <text x="470" y="402" font-size="10.5" fill="#64748b">nothing long-lived stored in CD/RO</text>
+    <text x="700" y="384">&#10003;&#160; Audit = CD/RO</text>
+    <text x="700" y="402" font-size="10.5" fill="#64748b">SIEM shows CD/RO as the reader</text>
+
+    <text x="52" y="436">&#10003;&#160; Per-release credential</text>
+    <text x="52" y="454" font-size="10.5" fill="#64748b">avoids the concurrency clobber</text>
+    <text x="248" y="436">&#10003;&#160; Mask secrets</text>
+    <text x="248" y="454" font-size="10.5" fill="#64748b">secure properties, set +x, no echo</text>
+    <text x="470" y="436">&#10003;&#160; Rotate keys</text>
+    <text x="470" y="454" font-size="10.5" fill="#64748b">rehearsed dual-trust runbook</text>
+    <text x="700" y="436">&#10003;&#160; Revoke / expire</text>
+    <text x="700" y="454" font-size="10.5" fill="#64748b">revoke-self at end of the step</text>
+  </g>
+
+  <defs>
+    <marker id="rp" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+</svg>

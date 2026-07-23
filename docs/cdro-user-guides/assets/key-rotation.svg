@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 340" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="Manual key rotation timeline. Generate a new key pair, add the new public key to Vault so both old and new are trusted, swap the private key in CD/RO, wait out the overlap window, then remove the old public key. There is no outage because both keys validate during the overlap.">
+  <rect x="0" y="0" width="960" height="340" rx="16" fill="#ffffff"/>
+  <rect x="0.5" y="0.5" width="959" height="339" rx="16" fill="none" stroke="#e2e8f0"/>
+
+  <text x="32" y="46" font-size="23" font-weight="700" fill="#0f172a">Rotating the signing key &#8212; with zero downtime</text>
+  <text x="32" y="72" font-size="14" fill="#64748b">Add the new key before swapping the old. Both validate during the overlap, so nothing breaks.</text>
+
+  <!-- overlap band (above the timeline, spanning add-new -> remove-old) -->
+  <rect x="300" y="100" width="520" height="28" rx="8" fill="#ecfdf5" stroke="#10b981" stroke-dasharray="5 4"/>
+  <text x="560" y="118" font-size="12" font-weight="700" fill="#065f46" text-anchor="middle">OVERLAP &#183; both keys valid (&#8805; token lifetime, ~900 s)</text>
+  <line x1="300" y1="128" x2="300" y2="140" stroke="#10b981" stroke-dasharray="3 3"/>
+  <line x1="820" y1="128" x2="820" y2="140" stroke="#10b981" stroke-dasharray="3 3"/>
+
+  <!-- baseline -->
+  <line x1="70" y1="150" x2="890" y2="150" stroke="#cbd5e1" stroke-width="3"/>
+
+  <!-- nodes -->
+  <!-- T0 -->
+  <circle cx="110" cy="150" r="11" fill="#4f46e5"/>
+  <text x="110" y="155" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <rect x="40" y="196" width="150" height="96" rx="10" fill="#eef2ff" stroke="#4f46e5"/>
+  <text x="115" y="220" font-size="12.5" font-weight="700" fill="#3730a3" text-anchor="middle">Generate</text>
+  <text x="115" y="240" font-size="11" fill="#475569" text-anchor="middle">a new key pair</text>
+  <text x="115" y="256" font-size="11" fill="#475569" text-anchor="middle">(same alg family)</text>
+  <text x="115" y="276" font-size="10.5" fill="#64748b" text-anchor="middle">offline, with openssl</text>
+
+  <!-- T1 -->
+  <circle cx="300" cy="150" r="11" fill="#0891b2"/>
+  <text x="300" y="155" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <rect x="222" y="196" width="156" height="96" rx="10" fill="#ecfeff" stroke="#0891b2"/>
+  <text x="300" y="220" font-size="12.5" font-weight="700" fill="#0e7490" text-anchor="middle">Add new PUBLIC</text>
+  <text x="300" y="238" font-size="11" fill="#475569" text-anchor="middle">key to Vault first</text>
+  <text x="300" y="258" font-size="10.5" font-family="ui-monospace, Menlo, Consolas, monospace" fill="#0e7490" text-anchor="middle">pubkeys = OLD+NEW</text>
+  <text x="300" y="278" font-size="10.5" fill="#64748b" text-anchor="middle">dual-trust begins</text>
+
+  <!-- T2 -->
+  <circle cx="465" cy="150" r="11" fill="#4f46e5"/>
+  <text x="465" y="155" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <rect x="388" y="196" width="154" height="96" rx="10" fill="#eef2ff" stroke="#4f46e5"/>
+  <text x="465" y="220" font-size="12.5" font-weight="700" fill="#3730a3" text-anchor="middle">Swap PRIVATE key</text>
+  <text x="465" y="238" font-size="11" fill="#475569" text-anchor="middle">in the CD/RO cred</text>
+  <text x="465" y="258" font-size="10.5" fill="#475569" text-anchor="middle">new runs sign new;</text>
+  <text x="465" y="274" font-size="10.5" fill="#475569" text-anchor="middle">in-flight old still ok</text>
+
+  <!-- T3 -->
+  <circle cx="630" cy="150" r="11" fill="#64748b"/>
+  <text x="630" y="155" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <rect x="552" y="196" width="156" height="96" rx="10" fill="#f8fafc" stroke="#64748b"/>
+  <text x="630" y="220" font-size="12.5" font-weight="700" fill="#334155" text-anchor="middle">Wait out overlap</text>
+  <text x="630" y="240" font-size="11" fill="#475569" text-anchor="middle">until every old</text>
+  <text x="630" y="256" font-size="11" fill="#475569" text-anchor="middle">token has expired</text>
+  <text x="630" y="276" font-size="10.5" fill="#64748b" text-anchor="middle">&#8805; ~900 s</text>
+
+  <!-- T4 -->
+  <circle cx="820" cy="150" r="11" fill="#dc2626"/>
+  <text x="820" y="155" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+  <rect x="742" y="196" width="156" height="96" rx="10" fill="#fef2f2" stroke="#dc2626"/>
+  <text x="820" y="220" font-size="12.5" font-weight="700" fill="#b91c1c" text-anchor="middle">Remove OLD key</text>
+  <text x="820" y="238" font-size="11" fill="#475569" text-anchor="middle">from Vault; destroy</text>
+  <text x="820" y="254" font-size="11" fill="#475569" text-anchor="middle">the old private key</text>
+  <text x="820" y="276" font-size="10.5" fill="#64748b" text-anchor="middle">old tokens now rejected</text>
+</svg>

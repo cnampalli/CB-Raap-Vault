@@ -10,6 +10,10 @@
 > identity to Vault and routed KV reads through a CI broker. The ZeroTrust plugin mints usable JWTs
 > directly, so CDRO authenticates on its own; the CI broker is retained here only as a **fallback**
 > (§10). See the decision record in [`00-architecture-overview.md`](00-architecture-overview.md#8-decision-record-why-these-choices) §8.
+>
+> **Visual, end-user version:** an infographic-first, multi-skill-level guide series covering this
+> plugin and a full release across every use case lives in
+> [`../cdro-user-guides/`](../cdro-user-guides/). This file remains the architect reference.
 
 ---
 

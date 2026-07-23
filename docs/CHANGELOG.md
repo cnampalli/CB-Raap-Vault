@@ -40,6 +40,34 @@ the `cdro` provider at a non-existent `/.well-known/openid-configuration`.
 
 ---
 
+## 2026-07-09 — CD/RO visual user guides (infographics)
+
+Added an **infographic-first, multi-skill-level** end-user guide series for the CD/RO use cases:
+configuring the ZeroTrust plugin and running one release across **every** CD/RO ⇄ Vault use case
+(Pattern A in-CD/RO read, Pattern B hand-off to AAP for dynamic secrets + signed SSH, key rotation,
+CI-broker fallback). Built on the existing reference/beginner content — no technical decisions changed.
+
+### Added
+- **New series** `docs/cdro-user-guides/`:
+  - `README.md` — landing page with a **three-track model** (👀 Explorer / 🔧 Operator / ⚙️ Engineer),
+    the big-picture infographic, prerequisites, and an index.
+  - `01-configure-zerotrust-plugin.md` — the signing/validation "crux," the plugin config fields, token
+    capture, and the Vault mount/role/policy, with per-track callouts.
+  - `02-release-all-use-cases.md` — one release wired across all use cases: Pattern A (three tiers),
+    Pattern B (AAP hand-off), zero-downtime key rotation, fallback, end-to-end verification, and a
+    symptom→cause→fix troubleshooting map.
+- **Eight self-contained SVG infographics** under `docs/cdro-user-guides/assets/` (theme-safe, no
+  external assets, rendered/inspected for layout): `big-picture`, `skill-tracks`, `signing-validation`,
+  `plugin-config`, `release-pipeline`, `pattern-a-b`, `key-rotation`, `troubleshooting`.
+- **Discoverability cross-links** from `getting-started/03-cloudbees-cdro.md` and
+  `vault-integrations/03-cdro-zerotrust-jwt.md` into the new visual series.
+
+### Notes
+- Content only — reuses the confirmed environment/versions and the already-documented plugin behavior;
+  the same open items apply (confirm real `aud`/algorithm/PEM from a captured token; automate rotation).
+
+---
+
 ## 2026-07-09
 
 Documented the **CloudBees CD/RO → Vault** integration via the custom, CloudBees-built **ZeroTrust**
