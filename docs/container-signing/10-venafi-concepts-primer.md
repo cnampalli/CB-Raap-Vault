@@ -457,7 +457,7 @@ events against CloudBees builds — any signing event without a matching build *
 | Project | `container-signing` | `01 §5.1` |
 | Environment category | Single | `01 §1` |
 | Environment type | Certificate | `01 §1` |
-| Environments | `container-dev`, `container-prod` | `01 §4` |
+| Environments | `container-dev`, `container-prod` | `01 §5.2` |
 | Key algorithm | EC P-256 | `01 §1` |
 | Roles | CI is Key User only | `01 §7` |
 | Flow | None on the CI environment — compensated | `01 §7`, §7 above |

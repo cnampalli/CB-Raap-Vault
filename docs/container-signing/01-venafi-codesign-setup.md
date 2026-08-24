@@ -277,7 +277,7 @@ entirely. These settings apply estate-wide and override what Project Owners can 
 
 | Setting | What it does | Matters because |
 |---|---|---|
-| **Role members must be in groups** | *"Disallows Owners from selecting individual users to fill roles in code signing. All roles must be assigned to groups."* | **If ticked, you cannot assign a service account directly as a Key User** — the picker offers only groups. §6.3 |
+| **Role members must be in groups** | *"Disallows Owners from selecting individual users to fill roles in code signing. All roles must be assigned to groups."* | **If ticked, you cannot assign a service account directly as a Key User** — the picker offers only groups. This is expected, not a fault; §6.2 |
 | **Key Users may not have other roles** | *"Restricts users assigned as Key Users **or members of a Key User group** from having any other role on the code signing project"* | Silently prevents signing — §7.5 |
 | **Private Key Generation and Storage** | Which key locations Owners may choose | **Vendor confirmation of the no-HSM design** (`00 §2`). Worth capturing for the control narrative |
 | **Signing Archive Options** | Retention of code signing event records — or **disable archiving entirely** | **Our audit evidence depends on this.** See the warning below |
@@ -563,15 +563,34 @@ key source (`10 §7.1`). Repeat for `container-dev`.
 > **Step 2 is the one people miss.** Creating the identity, or granting it TPP object permissions,
 > does **not** give it the ability to sign. Only Key User membership on the project does.
 
+> **⚠ At step 2 you will not be offered the service account itself — and should not look for it.**
+> With "Role members must be in groups" enabled (§3.3), the picker returns **groups only**. Adding
+> `CodeSign-ContainerProd-KeyUsers` *is* the step; there is no second action that attaches the
+> individual account. See §6.2 before concluding anything is broken.
+
 ### 6.2 Why a group, not the service account directly
 
-If the Key User field will not offer your service account — or any individual user — the global
-setting **"Role members must be in groups"** is enabled (§3.3).
+**First, work out which of two things you are looking at.** They present almost identically — the
+account you want is not in the picker — but they have different causes and different owners:
 
-**Assign a group rather than unchecking the setting.** It is what the control exists to enforce, it
-survives service-account rotation without touching the project, and it matches Venafi's rationale —
-the option *"eliminates having to maintain and update projects directly due to employee turnover."*
-Disabling a global control to accommodate one account weakens it estate-wide.
+| What the picker returns | Cause | Action |
+|---|---|---|
+| Groups, but **no individual at all** — not the service account, not your own account, not anyone | *"Role members must be in groups"* is enabled (§3.3) | **Expected behaviour.** Assign the group and move on. Do not disable the setting |
+| **Some** individuals resolve, but not `svc-container-signer` | Its OU falls outside every configured **search root** on the AD connector | Platform/AD team extends the search roots on the **existing** connector — §2.2 |
+| **No AD identities at all**, only local ones | You are signed in as a local identity | §2.1 — and if the project is invisible too, §2.6 |
+
+Search for a colleague's name to tell the first two apart. It takes seconds and it decides whether
+this is your problem or the AD team's.
+
+**If the setting is the cause, assign a group rather than unchecking it.** That is what the control
+exists to enforce, it survives service-account rotation without touching the project, and it matches
+Venafi's rationale — the option *"eliminates having to maintain and update projects directly due to
+employee turnover."* Disabling a global control to accommodate one account weakens it estate-wide.
+
+> **When the Key User is a group, §7.5 gets sharper.** The exclusivity rule evaluates *"members of a
+> Key User group"*, not only directly-assigned users — so the single-purpose, single-member group
+> from §2.4 stops being a tidiness preference and becomes the thing that makes the rule evaluable.
+> A service account sitting in any *other* group that holds a project role still cannot sign.
 
 ### 6.3 Two authentication options — pick B if you can
 
@@ -772,6 +791,8 @@ Before proceeding to `02`:
 
 - [ ] **The group is a Key User on `container-signing-prod`** (§6.1) — creating the identity alone
       grants nothing
+- [ ] **"Role members must be in groups" state recorded** (§3.3). If enabled, Key Users are groups by
+      construction — expected, not a fault — and the single-member rule in §2.4 becomes load-bearing
 - [ ] **`svc-container-signer` holds no other role** in that project, directly or via any other group (§7.5)
 - [ ] `svc-container-signer` identity exists; JWT Mapping configured (Option B) or password vaulted (Option A)
 - [ ] **No human identities are Key Users on `container-signing-prod`**

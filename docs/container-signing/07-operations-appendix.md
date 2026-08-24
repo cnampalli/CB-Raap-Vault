@@ -25,7 +25,7 @@
 Rotation must not create a window where running workloads fail admission. Both keys are trusted during
 overlap.
 
-1. **Create** a new environment (or new key in the existing environment) in CodeSign Protect — `01 §4`.
+1. **Create** a new environment (or new key in the existing environment) in CodeSign Protect — `01 §5.2`.
 2. **Export** the new public key — `01 §8`.
 3. **Add** the new key as a *second authority* in the ClusterImagePolicy — `06 §7`. Authorities are OR'ed,
    so both old and new signatures now verify. **Deploy this before changing the pipeline.**
@@ -148,7 +148,7 @@ Recover:
 | `checkgrant` returns 1 | No grant / expired | `getgrant --force`; check `/vedauth` reachability |
 | Grant acquisition fails with TLS errors | CA trust not configured | `pkcs11config trust --certfile:` — `02 §4`. **Do not** disable Chain Validation |
 | `pkcs11config: unknown command getgrant` | TPP/client upgraded to 25.3+ | Commands renamed to `login`/`checklogin`/`logout` — §9 |
-| **Cannot select an individual user** in the Key User field — the picker offers only groups | Global setting *"Role members must be in groups"* is enabled | Assign a single-purpose group instead of unchecking it — `01 §2.4`, `01 §3.3` |
+| **Cannot select an individual user** in the Key User field — **no** individual resolves, not even your own account | Global setting *"Role members must be in groups"* is enabled. **Expected behaviour, not a fault** | Assign a single-purpose group instead of unchecking it — `01 §6.2`, `01 §2.4`, `01 §3.3` |
 | Picker shows **some** AD identities but **not** the service account, though it exists in AD | Its OU falls outside every configured **search root** on the AD connector — TPP cannot see it, and reports nothing | Platform/AD team extends search roots on the **existing** connector — `01 §2.2`. **Do not add a second AD connector**; overlapping connections can stop the user resolving entirely |
 | Key User picker shows **local users only**, zero AD identities | **You are signed in as a local identity.** *"Local users can't add Active Directory users or groups"* — no setting reverses this, and nothing about the AD connector is wrong | Sign in as an **AD** account and redo the assignment — `01 §2.1`. If your AD account cannot see the project, it needs **CodeSign Protect Administrator**, granted from VCC → System Roles on the TPP server — `01 §2.6` |
 | ⚠ You were told to fix isolation via Policy Tree → Local Identity → Provider → Options → Permissions | **That setting runs the other way.** It *"permits external identities to see local identities"* — it lets AD users see local accounts, never the reverse | Ignore it for this symptom — `01 §2.1` |
@@ -180,7 +180,7 @@ Keep these current; they answer most control questions without a scramble:
 | Evidence | Source |
 |---|---|
 | Key custody: keys in the Secret Store, no HSM, never on agents | `00 §2`, TPP environment config |
-| Key generation approval record | Aperture project/environment approval — `01 §4` |
+| Key generation approval record | Aperture project/environment approval — `01 §5.2` |
 | Least-privilege key use | TPP permission export — `01 §7` |
 | Only CI can sign production | Environment user list + `container-signer` label binding |
 | Every signature attributable | CodeSign Protect audit log ↔ build correlation — `04 §3`. **Prerequisite:** Signing Archive retention configured and long enough — `01 §3.3`. If archiving is disabled, this evidence does not exist |
