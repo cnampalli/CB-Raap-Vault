@@ -88,12 +88,34 @@ cosign pkcs11-tool --help    # must not error; absence of this subcommand = wron
 Install the Venafi Code Signing client (21.4 or newer; pin one version fleet-wide) from the PKI team's
 package — `venafi-codesigningclients-<version>-linux-x86_64.rpm` / `.deb`.
 
-Configuration lives in two places on Linux:
+Paths the package installs on Linux — **confirm these on your own agent before using them**
+(§8 depends on the module path being right, and it is the most common thing to get wrong):
 
-| Scope | Path |
+| What | Path on Linux |
 |---|---|
+| **PKCS#11 module** (`module-path` in every key URI) | **`/opt/venafi/codesign/lib/venafipkcs11.so`** |
+| `pkcs11config` binary | `/usr/local/bin/pkcs11config` |
 | Machine configuration | `/etc/venafi/libhsm.conf` |
 | User configuration (PKCS#11) | `~/.venafipkcs11config` |
+| Trust store | `~/.libhsmtrust` |
+
+> **⚠ Do not confuse the binary path with the module path.** `pkcs11config` lives under
+> `/usr/local/bin`; the **module** lives under `/opt/venafi/codesign/lib`. Venafi's own cosign page
+> shows `/opt/venafi/codesign/lib/venafipkcs11.so`, which is the **macOS** location — on Linux that file does
+> not exist, and cosign fails with `failed to load pkcs11 module`. See §8.
+
+Verify on the agent rather than trusting any document, including this one:
+
+```bash
+# Whichever package manager applies
+rpm  -ql venafi-codesigningclients 2>/dev/null | grep -i pkcs11
+dpkg -L  venafi-codesigningclients 2>/dev/null | grep -i pkcs11
+
+# Fallback if the package name differs
+find / -name 'venafipkcs11*' -type f 2>/dev/null
+```
+
+Pin whatever that returns in configuration management (§9) and use it everywhere.
 
 Set the server URLs and CA trust once, at agent build time, via configuration management:
 
@@ -187,9 +209,45 @@ pkcs11config revokegrant --force --clear
 
 `--clear` removes stored configuration after revoking, leaving nothing reusable on the agent.
 
+### 5.1 When `getgrant` fails
+
+Two distinct errors, with nothing in common but the command that produced them.
+
+**`invalid_grant` — *"username/password combination not valid"***
+
+Authentication failed: TPP never got as far as looking at permissions.
+
+| Check | Detail |
+|---|---|
+| Username **format** | Try UPN (`svc-container-signer@corp.example.com`), then `DOMAIN\svc-container-signer`, then the bare `sAMAccountName`. Which one works depends on the AD connector's rank and mapping — a local account needs the `local:` prefix when the AD connector outranks it |
+| Password correctness | Test the credential against AD independently before blaming TPP |
+| `--force` | Without it a stored refresh token is used and *"any other provided credentials are ignored"* — so a corrected password appears to have no effect. Always pass `--force` when testing credentials |
+| Account state | Locked / expired / must-change-password all present as this error |
+
+**`no rule/permission for identity AD:<username> exists` — HTTP 400**
+
+Authentication **succeeded**; authorisation did not. TPP knows who you are and has no key-use rule for
+you. Three causes, in the order worth checking:
+
+| # | Cause | How to confirm | Fix |
+|---|---|---|---|
+| 1 | The identity holds **another role** on the project — commonly membership of the **Owner** group — and the exclusivity rule excludes it | Is the account in the group you set as Owner? | Expected behaviour. *"Key Users may not have other roles"* — `01 §7.5`. Use an identity that holds Key User **and nothing else** |
+| 2 | The account is in a group **nested inside** the Key User group, and nested resolution is not resolving it | Is it a *direct* member of the Key User group, or a member of a group within it? | Flatten to direct membership — `01 §2.4`. Nested groups expand only *"until the provider encounters a group that belongs to a different forest"* |
+| 3 | The identity simply is not a Key User | Aperture → project → Properties → Users & Approvers | Add it — `01 §6.1` |
+
+> **⚠ On `container-signing-prod`, a human failing this way is the design working, not a fault.**
+> Production signing is CI-only (`01 §7.1`) — that is the control that makes *"only CI can produce a
+> production signature"* true. **Do not add your own account as a Key User on prod to make a test
+> pass.** Test interactively against `container-signing-dev`, whose Key Users are developers by
+> design. If the *service account* hits this, that is a real fault — work the table above.
+
+
 ---
 
 ## 6. Concurrency isolation — `LIBHSMINSTANCE`
+
+> **Not required for a first manual test — skip to §8 if you are just proving the grant works.** This
+> section matters when **two builds run concurrently on one agent**. Nothing in §8 depends on it.
 
 Static agents run multiple executors. Two concurrent builds sharing one user configuration
 (`~/.venafipkcs11config`) will fight over the grant: one build's `revokegrant` in `post{}` kills the
@@ -230,10 +288,13 @@ mkdir -p "${HOME}"
 
 ## 7. The PIN in the key URI
 
+> **Nothing to execute here — this is guidance on what to put in the `pin-value` field of the URI you
+> discover in §8.** Read it, then carry on to §8.
+
 Venafi's documented cosign key URI includes `pin-value=`:
 
 ```
-pkcs11:token=Remote%20Token;slot-id=0;id=%44%65%76;object=container-prod?module-path=/usr/local/lib/venafipkcs11.so&pin-value=<pin>
+pkcs11:token=Remote%20Token;slot-id=0;id=%44%65%76;object=container-prod?module-path=/opt/venafi/codesign/lib/venafipkcs11.so&pin-value=<pin>
 ```
 
 Two observations:
@@ -258,12 +319,49 @@ Handling, in order of preference:
 
 ## 8. Discover the key URI
 
-Run once per environment, after a grant exists, and record the result — it is stable and belongs in the
-pipeline configuration (not discovered at build time):
+> **Depends on §5 only.** A grant must exist (`pkcs11config checkgrant` → RC 0). §6 and §7 are
+> advisory and block nothing here.
+
+### 8.1 Confirm the module path first
+
+`cosign` loads the Venafi PKCS#11 module by absolute path. **If the path is wrong the error is
+`failed to load pkcs11 module`, which says nothing about paths** — so establish it before running
+anything:
 
 ```bash
-cosign pkcs11-tool list-tokens --module-path /usr/local/lib/venafipkcs11.so
-cosign pkcs11-tool list-keys-uris --module-path /usr/local/lib/venafipkcs11.so
+MODULE=/opt/venafi/codesign/lib/venafipkcs11.so
+test -f "$MODULE" && echo "OK: $MODULE" || {
+    echo "Not there — locating it:"
+    rpm -ql venafi-codesigningclients 2>/dev/null | grep -i pkcs11
+    dpkg -L venafi-codesigningclients 2>/dev/null | grep -i pkcs11
+    find / -name 'venafipkcs11*' -type f 2>/dev/null
+}
+```
+
+**Linux is `/opt/venafi/codesign/lib/venafipkcs11.so`.** Vendor confirmation from the pkcs11-tool
+integration page — *"`--module /opt/venafi/codesign/lib/venafipkcs11.so`"* — and the OpenSSL page —
+*"`MODULE_PATH = /opt/venafi/codesign/lib/venafipkcs11.so`"*.
+
+> **⚠ Venafi's cosign page contradicts its own other pages, and it is the one you will find first.**
+> That page shows `module-path=/usr/local/lib/venafipkcs11.so` and, in its URI example,
+> `/usr/local/lib/venafi/venafipkcs11.so`. **Both are wrong for Linux.**
+> `/usr/local/lib/venafipkcs11.so` is the **macOS** path. Trust the output of the command above over
+> any documentation, this document included.
+
+| Platform | Module path |
+|---|---|
+| **Linux** | **`/opt/venafi/codesign/lib/venafipkcs11.so`** |
+| macOS | `/usr/local/lib/venafipkcs11.so` |
+| Windows | `venafipkcs11.dll` in the client install directory |
+
+### 8.2 Discover the URI
+
+Run once per environment and record the result — it is stable and belongs in pipeline configuration,
+not discovered at build time:
+
+```bash
+cosign pkcs11-tool list-tokens    --module-path "$MODULE"
+cosign pkcs11-tool list-keys-uris --module-path "$MODULE"
 ```
 
 Expected shape:
@@ -272,18 +370,21 @@ Expected shape:
 Object 0
   Label: container-prod
   ID:    636f6e7461696e65722d70726f64
-  URI:   pkcs11:token=Remote%20Token;slot-id=0;id=%63%6f%6e...;object=container-prod?module-path=/usr/local/lib/venafipkcs11.so&pin-value=1234
+  URI:   pkcs11:token=Remote%20Token;slot-id=0;id=%63%6f%6e...;object=container-prod?module-path=/opt/venafi/codesign/lib/venafipkcs11.so&pin-value=1234
 ```
 
-> **`token=Remote Token` is the confirmation that signing is remote** and no key material is local. If
-> you see a different token name, you are talking to a local token — stop and investigate.
->
-> **Module path varies by platform:** `/usr/local/lib/venafipkcs11.so` and
-> `/usr/lib/venafi/venafipkcs11.so` both appear in vendor docs; macOS uses
-> `/Library/Venafi/CodeSigning/lib/venafipkcs11.so`. Confirm the path your package installs and pin it
-> in configuration management.
+> **`token=Remote Token` is the confirmation that signing is remote** and no key material is local. A
+> different token name means you are talking to a local token — stop and investigate.
 
----
+### 8.3 If it still fails
+
+| Error | Cause | Fix |
+|---|---|---|
+| `failed to load pkcs11 module` | Wrong module path — usually the macOS path on a Linux host | §8.1. Confirm with `test -f`, not by reading docs |
+| `failed to load pkcs11 module` with a path that **does** exist | Missing 32/64-bit or dependency libs | `ldd "$MODULE"` — any `not found` line is your answer |
+| No `pkcs11-tool` subcommand | Wrong cosign build | Install the `pivkey-pkcs11key` asset — §3 |
+| Module loads, but **no objects listed** | No valid grant, or the identity is not a Key User | `pkcs11config checkgrant` (RC 0 = valid); then `01 §6` |
+| Objects listed but token is not `Remote Token` | Talking to a local token | Stop; investigate before signing anything |
 
 ## 9. Configuration-management role — what to converge
 
@@ -303,6 +404,7 @@ role: container-signing-agent
     - pkcs11config health           exits 0
     - cosign pkcs11-tool --help     exits 0
     - podman --version              exits 0
+    - test -f /opt/venafi/codesign/lib/venafipkcs11.so     # the module path §8 depends on
   monitoring:
     - file integrity: /etc/venafi/, /usr/local/bin/cosign
 ```
@@ -318,6 +420,9 @@ no Venafi session.
 - [ ] Firewall flows open to `/vedauth`, `/vedhsm`, Harbor, Prisma, Vault
 - [ ] cosign is the `pivkey-pkcs11key` build; `cosign pkcs11-tool --help` succeeds; checksum verified; mirrored internally
 - [ ] Client installed and pinned; `pkcs11config health` passes; Chain Validation enabled
+- [ ] **PKCS#11 module path confirmed to exist on the agent** and pinned in configuration management
+      (§8.1) — `/opt/venafi/codesign/lib/venafipkcs11.so` on Linux, *not* the macOS path in Venafi's
+      cosign documentation
 - [ ] Manual `getgrant` → `list` → `getpublickey` → `revokegrant` cycle succeeds end to end
 - [ ] `cosign pkcs11-tool list-keys-uris` returns `token=Remote Token` and the expected object label
 - [ ] Key URI recorded in pipeline configuration
@@ -332,4 +437,6 @@ no Venafi session.
 - [pkcs11config utility reference (24.3)](https://docs.venafi.com/Docs/24.3/TopNav/Content/CodeSigning/r-codesigning-pkcs11config.php)
 - [Configuration values and environment variables](https://docs.venafi.com/Docs/current/TopNav/Content/CodeSigning/r-codesigning-pkcs11-config-values.php)
 - [Setting up PKCS#11 clients](https://docs.venafi.com/Docs/24.3/TopNav/Content/CodeSigning/t-codesigning-working-with-pkcs11.php)
+- [Pkcs11-tool integration](https://docs.venafi.com/Docs/24.3/TopNav/Content/CodeSigning/t-codesigning-integration-pkcs11-tool.php) — **§8.1**, the authoritative Linux module path `/opt/venafi/codesign/lib/venafipkcs11.so`
+- [OpenSSL integration](https://docs.venafi.com/Docs/24.3/TopNav/Content/CodeSigning/t-codesigning-integration-openssl.php) — §8.1, `MODULE_PATH` corroborating the same Linux path
 - [cosign releases](https://github.com/sigstore/cosign/releases)

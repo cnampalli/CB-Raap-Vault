@@ -67,7 +67,7 @@ pipeline {
     VENAFI_OIDC_TOKEN = credentials('venafi-oidc')    // audience: venafi-codesign
 
     // Venafi client
-    PKCS11_MODULE  = '/usr/local/lib/venafipkcs11.so'
+    PKCS11_MODULE  = '/opt/venafi/codesign/lib/venafipkcs11.so'   // Linux; verify on the agent — 02 §8.1
     VENAFI_OBJECT  = 'container-prod'
     LIBHSMINSTANCE = "ci-${env.BUILD_TAG}"            // per-build grant isolation — see 02 §6
 

@@ -115,7 +115,7 @@ PKCS#11-aware tool works with any compliant module — which is how cosign talks
 Venafi-specific code.
 
 **PKCS#11 URI (RFC 7512)** — the string identifying a key through a PKCS#11 module, e.g.
-`pkcs11:token=Remote%20Token;object=container-prod?module-path=/usr/local/lib/venafipkcs11.so&pin-value=…`.
+`pkcs11:token=Remote%20Token;object=container-prod?module-path=/opt/venafi/codesign/lib/venafipkcs11.so&pin-value=…`.
 
 **`pin-source`** — RFC 7512 URI attribute pointing at a *file* containing the PIN, instead of the inline
 `pin-value`. Preferred when a real PIN is required, to keep it off the command line.

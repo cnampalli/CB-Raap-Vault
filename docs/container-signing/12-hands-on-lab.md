@@ -25,7 +25,7 @@ Set up your shell once:
 
 ```bash
 export TPP_HOST="tpp-sandbox.corp.example.com"
-export PKCS11_MODULE="/usr/local/lib/venafipkcs11.so"   # confirm your install path
+export PKCS11_MODULE="/opt/venafi/codesign/lib/venafipkcs11.so"   # confirm your install path
 export VENAFI_OBJECT="container-dev"                     # your sandbox environment label
 export HARBOR_HOST="harbor-sandbox.corp.example.com"
 export HARBOR_PROJ="signing-lab"
