@@ -1,0 +1,120 @@
+---
+# ===========================================================================
+# AAP job template playbook — CDRO ZeroTrust JWT -> Vault, DEPENDENCY-FREE.
+# Uses only ansible.builtin.uri (raw Vault REST). No collections, no vault CLI.
+# Use this when your AAP execution environment is airgapped and does not ship
+# community.hashi_vault. Functionally equivalent to aap-vault-jwt.yml.
+# ===========================================================================
+#
+# Launched exactly the same way (EC-AnsibleTower "Launch a Job Template"):
+#   { "extra_vars": { "vault_jwt": "$[/myPipelineRuntime/jwtToken]",
+#                     "vault_role": "aap-consumer",
+#                     "release": "$[/myRelease/name]" } }
+#
+# Job template MUST have Variables -> "Prompt on launch" enabled, or AAP drops
+# the extra_vars. no_log: true is mandatory on every credential-bearing task.
+# ===========================================================================
+
+- name: Consume CDRO ZeroTrust JWT and fetch Vault secrets (no collection)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    vault_role: "aap-consumer"
+    vault_addr: "https://vault-vip.corp.example.com:8200"
+    vault_namespace: "AUT"
+    vault_jwt_mount: "jwt-cdro"
+    vault_kv_mount: "secret"
+    vault_validate_certs: true
+    vault_db_mount: "database"
+    vault_db_role: "app-readonly"
+
+  pre_tasks:
+    - name: Fail fast if the JWT was not provided
+      ansible.builtin.assert:
+        that:
+          - vault_jwt is defined
+          - vault_jwt | length > 0
+        fail_msg: "'vault_jwt' extra_var is missing (check the ZeroTrust step and Prompt-on-launch)."
+      no_log: true
+
+  tasks:
+    # 1. JWT login -> client_token
+    - name: Vault JWT login (POST /v1/auth/<mount>/login)
+      ansible.builtin.uri:
+        url: "{{ vault_addr }}/v1/auth/{{ vault_jwt_mount }}/login"
+        method: POST
+        validate_certs: "{{ vault_validate_certs }}"
+        headers:
+          X-Vault-Namespace: "{{ vault_namespace }}"
+        body_format: json
+        body:
+          role: "{{ vault_role }}"
+          jwt: "{{ vault_jwt }}"
+        status_code: 200
+      register: login
+      no_log: true
+
+    - name: Capture the client token
+      ansible.builtin.set_fact:
+        vault_token: "{{ login.json.auth.client_token }}"
+      no_log: true
+
+    # 2a. KV v2 read (GET /v1/<mount>/data/<path>) -> .json.data.data
+    - name: Read release KV secret
+      ansible.builtin.uri:
+        url: "{{ vault_addr }}/v1/{{ vault_kv_mount }}/data/cdr/{{ release }}/db"
+        method: GET
+        validate_certs: "{{ vault_validate_certs }}"
+        headers:
+          X-Vault-Token: "{{ vault_token }}"
+          X-Vault-Namespace: "{{ vault_namespace }}"
+        status_code: 200
+      register: kv
+      no_log: true
+
+    # 2b. Dynamic DB creds (GET /v1/<db_mount>/creds/<role>)
+    - name: Generate dynamic database credentials
+      ansible.builtin.uri:
+        url: "{{ vault_addr }}/v1/{{ vault_db_mount }}/creds/{{ vault_db_role }}"
+        method: GET
+        validate_certs: "{{ vault_validate_certs }}"
+        headers:
+          X-Vault-Token: "{{ vault_token }}"
+          X-Vault-Namespace: "{{ vault_namespace }}"
+        status_code: 200
+      register: dbcreds
+      no_log: true
+
+    # 3. Use secrets (safe proof; never print values)
+    - name: Prove the KV secret was retrieved (no value printed)
+      ansible.builtin.debug:
+        msg: "KV read OK — keys present: {{ kv.json.data.data.keys() | list }}"
+
+    - name: Prove dynamic creds were issued (username only)
+      ansible.builtin.debug:
+        msg: "Dynamic DB user issued: {{ dbcreds.json.data.username }}"
+
+    # Real usage example (commented):
+    # - name: Deploy with the DB password
+    #   ansible.builtin.command: /opt/app/deploy.sh
+    #   environment:
+    #     DB_USER: "{{ dbcreds.json.data.username }}"
+    #     DB_PASS: "{{ dbcreds.json.data.password }}"
+    #   no_log: true
+
+  post_tasks:
+    # 4. Revoke this run's token
+    - name: Revoke the Vault token (revoke-self)
+      ansible.builtin.uri:
+        url: "{{ vault_addr }}/v1/auth/token/revoke-self"
+        method: POST
+        validate_certs: "{{ vault_validate_certs }}"
+        headers:
+          X-Vault-Token: "{{ vault_token }}"
+          X-Vault-Namespace: "{{ vault_namespace }}"
+        status_code: [200, 204]
+      no_log: true
+      ignore_errors: true
+      when: vault_token is defined

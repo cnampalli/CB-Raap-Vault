@@ -66,6 +66,9 @@ re-check the affected guide.
      (`openssl`) — the private key for the plugin, the public key for Vault.
 5. **[04 — Ansible Automation Platform](04-aap-approle-ssh.md)** — hardened AppRole
    login + Vault-signed SSH to managed nodes.
+   - *Alternative path:* **[04a — AAP fetches secrets with a CD/RO-handed JWT](04a-aap-jwt-from-cdro.md)**
+     — a CD/RO release mints a ZeroTrust JWT and an AAP job uses it to read KV +
+     **dynamic** secrets (EC-AnsibleTower hand-off).
 6. **[05 — Verify & troubleshoot](05-verify-and-troubleshoot.md)** — prove it works
    and fix the common failures.
 
