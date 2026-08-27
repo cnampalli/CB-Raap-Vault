@@ -8,6 +8,67 @@ CloudBees CD/RO, and Ansible Automation Platform (AAP). Newest first.
 
 ---
 
+## 2026-08-27
+
+Made the **firewall matrix runnable**. The matrix is restated in three guides
+(`vault-integrations/00-architecture-overview.md` §4, `05-operations-appendix.md` §1,
+`getting-started/00-before-you-begin.md` §3) and the troubleshooting guide opens with "most
+'it won't authenticate' problems are a closed firewall path, not bad config" — but there was no
+way to *prove* a flow was open. The only validator, `tools/check_oidc_discovery.py`, covers
+flow #1 alone and is Python, which cannot run on the hardened VMs where the check has to happen.
+
+### Added
+- **`docs/shared/conn_check.sh`** — connectivity checker whose only hard dependency is **bash
+  3.2+**. DNS via `getent`, TCP via the `/dev/tcp` shell builtin (no binary at all), TLS via
+  `openssl` (reports cert subject + expiry, flags certs expiring within 7 days), HTTP via
+  `curl`/`wget`/a raw request over `/dev/tcp`. Every optional tool degrades to `SKIP` **with the
+  reason printed**, never to a false failure. `timeout` is used when present; a pure-bash
+  watchdog takes over when it is not. Exit codes: `0` pass, `1` findings, `2` misconfigured,
+  `3` could-not-be-run.
+- **The distinction the whole thing exists for:** `TIMEOUT` (firewall DROP) is reported
+  separately from `REFUSED` (path open, nothing listening) and from `SKIP`. Collapsing those
+  into "failed" would send people to the firewall team for problems they cannot fix.
+- **`docs/shared/targets.conf`** — pipe-delimited catalog seeded with this repo's real flows
+  (#1–#10 plus the container-signing egress to Venafi TPP / Harbor / Prisma). Pipe-delimited
+  rather than JSON because parsing JSON in shell would mean `jq` — the exact dependency being
+  avoided. `hosts` × `ports` expand as a cartesian product; malformed rows are rejected with
+  file and line number.
+- **Hop mode** — `--hop <name>` SSHes to a via-host and runs the checks *from there*. Flows #1
+  (Vault → CI `/oidc/**`) and #9 (Vault → SIEM) originate on a Vault node and cannot be
+  validated any other way. The script is streamed over the SSH connection and targets are passed
+  as arguments, so nothing is written to the via-host's disk. An unreachable via-host yields
+  exit `3` and an explicit "could NOT be tested" warning — never a false "closed".
+- **`docs/AAP/`** — `firewall-connectivity.yml` (three modes: controller / per-inventory-host /
+  hop), `inventory.example.ini`, README. No collections. Uses `ansible.builtin.script`, one of
+  the few modules needing **no Python on the managed node**; the catalog is expanded once on the
+  controller and passed as `--inline` args rather than copied.
+- **`docs/CI/`** — `Jenkinsfile.firewall-connectivity` + README. Core Pipeline steps only;
+  Credentials Binding and JUnit are both bundled and both optional. Emits JUnit XML so a flow
+  that breaks after a firewall change shows as a trend. Parameters are validated against
+  `[A-Za-z0-9_,.-]` before reaching a shell.
+- **`docs/CDRO/`** — `firewall-connectivity.dsl` + README. Plain bash command step, no plugin
+  and no `ectool`. Builds its argument list with `set --` rather than `eval`, and validates
+  parameters in-step (verified: `vault;rm -rf /` exits `2` without executing).
+
+### Changed
+- `vault-integrations/05-operations-appendix.md` §1 and
+  `getting-started/05-verify-and-troubleshoot.md` §2 now point at the runnable check. Both kept
+  their existing `curl | jq` and `check_oidc_discovery.py` instructions, now labelled with the
+  dependencies they need, since the new harness is the one that works on a stripped host.
+
+### Notes / limitations
+- Verified end to end on the engine: every result class (PASS / REFUSED / TIMEOUT / DNS-fail
+  cascade / SKIP), all exit codes, catalog filters and malformed-row handling, TSV and JUnit
+  output, the SSH-failure path, and the streamed remote invocation. Playbook YAML structure and
+  the embedded shell of both the Jenkinsfile and the DSL were syntax-checked and the DSL step
+  body was executed; **the Jenkinsfile and DSL have not been run on a live controller** — no
+  CI/CD-RO instance was available.
+- Targets assume bash on Linux; the `nc` fallback covers busybox/dash. AIX/Solaris untested.
+- `targets.conf` ships with `*.corp.example.com` placeholders. Replace them, and decide whether
+  real hostnames should be committed if this repo is shared outside the Automation team.
+
+---
+
 ## 2026-07-14
 
 Added the **module-uplift runbook** that makes CDRO's static-key JWT auth expressible in Prescient

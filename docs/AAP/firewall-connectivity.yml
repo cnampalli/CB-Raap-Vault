@@ -1,0 +1,196 @@
+---
+# ===========================================================================
+# AAP job template playbook — firewall / connectivity validation.
+#
+# Proves the flows in the firewall matrix
+# (../vault-integrations/00-architecture-overview.md §4) are actually open,
+# and tells a firewall DROP apart from a service that is not listening.
+#
+# DEPENDENCY-FREE BY DESIGN
+#   - No collections. Only ansible.builtin.{command,script,debug,assert}.
+#   - No Python on the managed nodes. ansible.builtin.script is one of the very
+#     few modules that does not need an interpreter on the target — it ships the
+#     shell script over the connection and runs it. (Python is still required on
+#     the AAP controller / execution environment, as it is for all of Ansible.)
+#   - The checker itself needs nothing but bash. See ../shared/conn_check.sh.
+#
+# THREE MODES, selected by tag or by variable:
+#
+#   1. from the controller        --tags local
+#      Checks run on the AAP execution environment itself. Covers flow #7
+#      (AAP -> Vault) and #10.
+#
+#   2. from each inventory host   --tags remote
+#      Checks run ON each host in [connectivity_sources]. This is the
+#      Ansible-native way to test a flow whose SOURCE is another machine —
+#      put the Vault VM in inventory and Ansible SSHes in for you. Covers
+#      flow #1 (Vault -> CI) and #9 (Vault -> SIEM).
+#
+#   3. via an SSH hop             --tags hop  -e hop=<name>
+#      Uses the HOP rows in targets.conf. Same idea as mode 2, but for source
+#      hosts you do not want in inventory, and it matches exactly what the
+#      CloudBees CI and CD/RO jobs do.
+#
+# EXAMPLES
+#   ansible-playbook firewall-connectivity.yml --tags local
+#   ansible-playbook firewall-connectivity.yml --tags local -e apps=vault,ci
+#   ansible-playbook firewall-connectivity.yml -i inventory.ini --tags remote
+#   ansible-playbook firewall-connectivity.yml --tags hop -e hop=flow1-vault-to-ci
+#
+# AAP JOB TEMPLATE: enable Variables -> "Prompt on launch" so apps / envs / hop
+# can be set per run, otherwise AAP drops the extra_vars.
+# ===========================================================================
+
+- name: Connectivity checks from the AAP controller / execution environment
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [local]
+
+  vars:
+    conn_check: "{{ playbook_dir }}/../shared/conn_check.sh"
+    targets_file: "{{ playbook_dir }}/../shared/targets.conf"
+    apps: ""
+    envs: ""
+    check_timeout: 5
+
+  tasks:
+    - name: Confirm the checker is present and executable
+      ansible.builtin.assert:
+        that:
+          - conn_check is defined
+        fail_msg: "conn_check path not set"
+
+    - name: Run connectivity checks from this host
+      ansible.builtin.command:
+        argv: >-
+          {{ [conn_check, '--file', targets_file, '--timeout', check_timeout | string]
+             + (['--app', apps] if apps | length > 0 else [])
+             + (['--env', envs] if envs | length > 0 else []) }}
+      register: local_check
+      changed_when: false
+      # rc 1 = a check failed (a finding, not an execution error)
+      # rc 3 = a check could not be run (tool missing / hop unreachable)
+      failed_when: local_check.rc not in [0, 1, 3]
+
+    - name: Show the connectivity report
+      ansible.builtin.debug:
+        msg: "{{ local_check.stdout_lines }}"
+
+    - name: Fail the job if any flow is closed
+      ansible.builtin.assert:
+        that:
+          - local_check.rc == 0
+        fail_msg: >-
+          One or more connectivity checks failed from {{ inventory_hostname }}.
+          Read the report above: TIMEOUT means a firewall DROP, REFUSED means the
+          path is open but nothing is listening.
+        success_msg: "All connectivity checks passed from this host."
+
+- name: Connectivity checks from each source host (no Python needed on the target)
+  hosts: connectivity_sources
+  gather_facts: false
+  tags: [remote]
+
+  vars:
+    conn_check: "{{ playbook_dir }}/../shared/conn_check.sh"
+    targets_file: "{{ playbook_dir }}/../shared/targets.conf"
+    apps: ""
+    envs: ""
+    check_timeout: 5
+
+  tasks:
+    # The catalog lives on the controller and is NOT copied to the targets
+    # (copying would need Python there). Instead it is expanded here, once, and
+    # the resulting targets are passed to each host as --inline arguments.
+    - name: Expand the target catalog on the controller
+      ansible.builtin.command:
+        argv: >-
+          {{ [conn_check, '--file', targets_file, '--list']
+             + (['--app', apps] if apps | length > 0 else [])
+             + (['--env', envs] if envs | length > 0 else []) }}
+      delegate_to: localhost
+      run_once: true
+      changed_when: false
+      register: expanded
+
+    - name: Fail early if nothing matched the filters
+      ansible.builtin.assert:
+        that:
+          - expanded.stdout_lines | length > 0
+        fail_msg: "No targets matched apps='{{ apps }}' envs='{{ envs }}'."
+      run_once: true
+
+    # ansible.builtin.script streams the script over the existing SSH
+    # connection and runs it there. Nothing needs to be installed on the host.
+    - name: "Run connectivity checks on {{ inventory_hostname }}"
+      ansible.builtin.script:
+        cmd: >-
+          {{ conn_check }}
+          {% for spec in expanded.stdout_lines %}--inline {{ spec | quote }} {% endfor %}
+          --timeout {{ check_timeout }}
+      register: remote_check
+      changed_when: false
+      failed_when: remote_check.rc not in [0, 1, 3]
+
+    - name: "Show the connectivity report for {{ inventory_hostname }}"
+      ansible.builtin.debug:
+        msg: "{{ remote_check.stdout_lines }}"
+
+    # Runs after every host has been checked (linear strategy), so one closed
+    # flow does not hide the rest.
+    - name: Fail the job if any flow is closed
+      ansible.builtin.assert:
+        that:
+          - remote_check.rc == 0
+        fail_msg: >-
+          One or more connectivity checks failed from {{ inventory_hostname }}.
+        success_msg: "All connectivity checks passed from {{ inventory_hostname }}."
+
+- name: Connectivity checks via an SSH hop (sources not in inventory)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [hop]
+
+  vars:
+    conn_check: "{{ playbook_dir }}/../shared/conn_check.sh"
+    targets_file: "{{ playbook_dir }}/../shared/targets.conf"
+    hop: ""
+    envs: ""
+    check_timeout: 5
+    ssh_opts: ""
+
+  tasks:
+    - name: Skip unless a hop was requested
+      ansible.builtin.debug:
+        msg: "No 'hop' variable set — pass -e hop=<name> (or hop=all) to use this play."
+      when: hop | length == 0
+
+    - name: "Run connectivity checks via hop '{{ hop }}'"
+      ansible.builtin.command:
+        argv: >-
+          {{ [conn_check, '--file', targets_file, '--hop', hop,
+              '--timeout', check_timeout | string]
+             + (['--env', envs] if envs | length > 0 else [])
+             + (['--ssh-opts', ssh_opts] if ssh_opts | length > 0 else []) }}
+      register: hop_check
+      changed_when: false
+      failed_when: hop_check.rc not in [0, 1, 3]
+      when: hop | length > 0
+
+    - name: Show the hop report
+      ansible.builtin.debug:
+        msg: "{{ hop_check.stdout_lines }}"
+      when: hop | length > 0
+
+    - name: Fail the job if any flow is closed
+      ansible.builtin.assert:
+        that:
+          - hop_check.rc == 0
+        fail_msg: >-
+          Hop '{{ hop }}' reported failures (rc={{ hop_check.rc }}).
+          rc=3 means SSH to the hop host did not work, so the flow was never
+          tested — that is not the same as the flow being closed.
+        success_msg: "All connectivity checks passed via hop '{{ hop }}'."
+      when: hop | length > 0

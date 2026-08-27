@@ -62,16 +62,33 @@ vault unwrap "$WRAP"   # must FAIL (already used) — proves single-use
 Most "it won't authenticate" problems are a closed firewall path, not bad config.
 Validate the flows from [00 §3](00-before-you-begin.md#3-network-flows-to-request-airgapped--nothing-is-open-by-default).
 
+**Check every flow at once** with the shell-only harness in
+[`../shared/`](../shared/) — bash is its only dependency, so it runs on a hardened
+Vault node with no python and no `jq`:
+
+```bash
+docs/shared/conn_check.sh                       # everything, from here
+docs/shared/conn_check.sh --hop flow1-vault-to-ci   # flow #1, from a Vault node
+```
+
+It reports **TIMEOUT** (a firewall DROP) separately from **REFUSED** (the path is
+open, nothing is listening) — so you know whether to call the firewall team or
+the service owner. The same check runs from
+[AAP](../AAP/), [CloudBees CI](../CI/), and [CD/RO](../CDRO/).
+
 **Flow #1 (the classic silent failure) — from a Vault node:**
 ```bash
-# Helper (clearest):
+# Whole-matrix harness (no python, no jq — works on a stripped Vault node):
+docs/shared/conn_check.sh --hop flow1-vault-to-ci
+
+# Helper (clearest, needs python3 on the machine you run it from):
 python3 tools/check_oidc_discovery.py https://ctrlA.ci.corp.example.com --cacert /etc/pki/vault/ca.crt
 
 # Or manually:
 curl -s https://ctrlA.ci.corp.example.com/oidc/.well-known/openid-configuration | grep jwks_uri
 ```
-If either fails, JWT login fails with signature/validation errors **regardless of
-role config**. Fix the firewall first.
+If any of these fails, JWT login fails with signature/validation errors
+**regardless of role config**. Fix the firewall first.
 
 ---
 

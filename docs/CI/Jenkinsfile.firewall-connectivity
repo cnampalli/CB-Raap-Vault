@@ -1,0 +1,209 @@
+// ---------------------------------------------------------------------------
+// CloudBees CI — firewall / connectivity validation.
+//
+// Proves the flows in the firewall matrix
+// (../vault-integrations/00-architecture-overview.md §4) are actually open,
+// from a CI agent, and tells a firewall DROP apart from a service that is
+// simply not listening.
+//
+// PLUGIN-FREE BY DESIGN
+//   Uses only core Pipeline steps: checkout, sh, withEnv, archiveArtifacts,
+//   fileExists, deleteDir.
+//   - withCredentials(sshUserPrivateKey) needs Credentials Binding, which ships
+//     with CloudBees CI. It is only reached when HOP is set.
+//   - junit() needs the JUnit plugin (also bundled). It is guarded by
+//     PUBLISH_JUNIT so this pipeline still runs on a controller without it —
+//     the same convention as Jenkinsfile.vault-oidc-nocli, where timestamps()
+//     is omitted because it needs the Timestamper plugin.
+//   The checker itself needs nothing but bash on the agent.
+//
+// AGENT REQUIREMENT: bash. That is all. No python, no jq, no nc, no openssl —
+// checks that need a missing tool report SKIP with the reason instead of
+// failing, so a stripped agent still produces a usable report.
+//
+// BUILD RESULT MAPPING
+//   rc 0 -> SUCCESS    every flow open
+//   rc 1 -> UNSTABLE   one or more flows closed (a finding, like a failed test)
+//   rc 3 -> UNSTABLE   a check could not be run (SSH to the hop host failed, or
+//                      a required tool is missing) — NOT the same as closed
+//   rc 2 -> FAILURE    bad catalog or bad arguments; the job is misconfigured
+//   Want a red build for a closed flow instead of yellow? Change the
+//   `currentBuild.result = 'UNSTABLE'` on rc 1 to 'FAILURE'.
+// ---------------------------------------------------------------------------
+
+pipeline {
+  agent any
+
+  options {
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '30'))
+    // timestamps() omitted — it needs the Timestamper plugin.
+  }
+
+  parameters {
+    string(name: 'APPS', defaultValue: '',
+           description: 'Applications to check, comma-separated (blank = all). e.g. vault,ci')
+    string(name: 'ENVS', defaultValue: '',
+           description: 'Environments to check, comma-separated (blank = all). e.g. prod')
+    string(name: 'HOP', defaultValue: '',
+           description: 'HOP name from targets.conf — SSH there and run the checks FROM that host. ' +
+                        'Use "all" for every hop. Blank = check from this agent. ' +
+                        'Flows #1 and #9 originate on a Vault node and can ONLY be tested this way.')
+    string(name: 'CHECK_TIMEOUT', defaultValue: '5',
+           description: 'Per-check timeout in seconds')
+    booleanParam(name: 'INSECURE_TLS', defaultValue: false,
+           description: 'Skip TLS certificate verification (use when the private CA is not on the agent)')
+    string(name: 'CA_FILE', defaultValue: '',
+           description: 'Optional private CA bundle on the agent, e.g. /etc/pki/vault/ca.crt')
+    string(name: 'SSH_CREDENTIAL_ID', defaultValue: 'conncheck-ssh-key',
+           description: 'SSH private-key credential — used in HOP mode only')
+    booleanParam(name: 'PUBLISH_JUNIT', defaultValue: true,
+           description: 'Publish results as test results (needs the JUnit plugin — bundled with CloudBees CI)')
+  }
+
+  environment {
+    CONN_CHECK = 'docs/shared/conn_check.sh'
+    TARGETS    = 'docs/shared/targets.conf'
+    REPORT     = 'connectivity-results.xml'
+  }
+
+  stages {
+
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Preflight') {
+      steps {
+        script {
+          validateParams()
+          withEnv(["CC_ARGS=${filterArgs(true)}"]) {
+            // $CC_ARGS is intentionally unquoted so the flags word-split. That
+            // is only safe because validateParams() has already rejected
+            // anything outside [A-Za-z0-9_,.-] (and a plain path for CA_FILE).
+            sh '''
+              set -eu
+              test -f "$CONN_CHECK" || { echo "checker not found at $CONN_CHECK"; exit 2; }
+              test -f "$TARGETS"    || { echo "catalog not found at $TARGETS";   exit 2; }
+              chmod +x "$CONN_CHECK"
+              bash -n "$CONN_CHECK"
+              echo "--- targets that will be checked ---"
+              bash "$CONN_CHECK" --file "$TARGETS" --list $CC_ARGS
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Check from this agent') {
+      when { expression { return !params.HOP?.trim() } }
+      steps {
+        script {
+          def rc = 0
+          withEnv(["CC_ARGS=${filterArgs(true)}"]) {
+            rc = sh(returnStatus: true, script: '''
+              set -u
+              bash "$CONN_CHECK" --file "$TARGETS" \
+                   --timeout "$CHECK_TIMEOUT" --junit "$REPORT" $CC_ARGS
+            ''')
+          }
+          applyResult(rc, "checks from this agent")
+        }
+      }
+    }
+
+    stage('Check via SSH hop') {
+      when { expression { return params.HOP?.trim() } }
+      steps {
+        // Only reached in hop mode. Jenkins writes the key to a temp file and
+        // deletes it when the block ends. APPS is not passed here — the HOP row
+        // in targets.conf already declares which applications to test.
+        withCredentials([sshUserPrivateKey(credentialsId: params.SSH_CREDENTIAL_ID,
+                                           keyFileVariable: 'SSH_KEY')]) {
+          script {
+            def rc = 0
+            withEnv(["CC_ARGS=${filterArgs(false)}"]) {
+              rc = sh(returnStatus: true, script: '''
+                set -u
+                bash "$CONN_CHECK" --file "$TARGETS" \
+                     --hop "$HOP" --timeout "$CHECK_TIMEOUT" \
+                     --ssh-opts "-i $SSH_KEY" $CC_ARGS
+              ''')
+            }
+            applyResult(rc, "checks via hop '${params.HOP}'")
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      script {
+        if (fileExists(env.REPORT)) {
+          if (params.PUBLISH_JUNIT) {
+            // Needs the JUnit plugin. Turn PUBLISH_JUNIT off if it is absent.
+            junit allowEmptyResults: true, testResults: env.REPORT
+          }
+          archiveArtifacts artifacts: env.REPORT, allowEmptyArchive: true
+        }
+      }
+      deleteDir()   // core Pipeline step. cleanWs() would need the ws-cleanup plugin.
+    }
+  }
+}
+
+// --- helpers ---------------------------------------------------------------
+// Defined outside pipeline{} so both stages share exactly one implementation.
+
+// Reject anything that could not survive unquoted word-splitting in sh.
+void validateParams() {
+  ['APPS': params.APPS, 'ENVS': params.ENVS, 'HOP': params.HOP,
+   'CHECK_TIMEOUT': params.CHECK_TIMEOUT].each { name, value ->
+    if (value?.trim() && !(value ==~ /^[A-Za-z0-9_,.\-]+$/)) {
+      error("Parameter ${name} contains unsupported characters: '${value}'. " +
+            "Allowed: letters, digits, and _ , . -")
+    }
+  }
+  if (params.CA_FILE?.trim() && !(params.CA_FILE ==~ /^[A-Za-z0-9_.\-\/]+$/)) {
+    error("Parameter CA_FILE is not a plain path: '${params.CA_FILE}'")
+  }
+  if (!(params.CHECK_TIMEOUT ==~ /^[0-9]+$/)) {
+    error("CHECK_TIMEOUT must be a whole number of seconds, got '${params.CHECK_TIMEOUT}'")
+  }
+}
+
+// Build the optional flags. Booleans are resolved HERE rather than in the shell:
+// a Jenkins boolean parameter reaches the shell as the string "false", which is
+// non-empty and would make ${VAR:+--insecure} fire on every build.
+String filterArgs(boolean includeApps) {
+  def a = []
+  if (includeApps && params.APPS?.trim()) { a << "--app"    ; a << params.APPS.trim()    }
+  if (params.ENVS?.trim())                { a << "--env"    ; a << params.ENVS.trim()    }
+  if (params.INSECURE_TLS)                { a << "--insecure"                            }
+  if (params.CA_FILE?.trim())             { a << "--cafile" ; a << params.CA_FILE.trim() }
+  return a.join(' ')
+}
+
+// Map the checker's exit code onto a build result.
+void applyResult(int rc, String what) {
+  switch (rc) {
+    case 0:
+      echo "All ${what} passed — every flow is open."
+      break
+    case 1:
+      currentBuild.result = 'UNSTABLE'
+      echo "One or more ${what} FAILED. In the report: TIMEOUT = firewall DROP, " +
+           "REFUSED = path is open but nothing is listening."
+      break
+    case 3:
+      currentBuild.result = 'UNSTABLE'
+      echo "Some ${what} could not be run (SSH to the hop host failed, or a tool " +
+           "is missing on the agent). This is NOT proof that the flow is closed."
+      break
+    default:
+      error("conn_check.sh exited ${rc} — bad catalog or bad arguments (job misconfigured).")
+  }
+}
