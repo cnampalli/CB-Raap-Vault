@@ -20,8 +20,28 @@ Cross-cutting operational reference for the CI / CDRO / AAP ↔ Vault Enterprise
 | 9 | Vault nodes | SIEM/syslog | 514/6514 | Audit stream |
 | 10 | AAP node-trust playbook | `<vault-vip>/v1/AUT/ssh/public_key` | 8200 | Fetch SSH CA public key |
 
-**Validate flow #1 (most common failure)** from a Vault node:
+**Validate the whole matrix** with the shell-only harness in [`../shared/`](../shared/).
+Its only dependency is bash — no python, no `jq` — so it runs on a hardened Vault
+node, and the same check is callable from [AAP](../AAP/), [CloudBees CI](../CI/),
+and [CD/RO](../CDRO/):
+
 ```bash
+docs/shared/conn_check.sh                            # every flow, from here
+docs/shared/conn_check.sh --app vault --env prod     # a subset
+docs/shared/conn_check.sh --hop all                  # flows whose source is elsewhere
+```
+
+It separates **TIMEOUT** (a firewall DROP) from **REFUSED** (path open, nothing
+listening), so a report tells you whether the firewall team or the service owner
+owns the problem. Targets live in
+[`../shared/targets.conf`](../shared/targets.conf), seeded from the table above.
+
+**Validate flow #1 (most common failure)** from a Vault node. Its source is a
+Vault node, so it cannot be checked from anywhere else — hop mode does the SSH:
+```bash
+docs/shared/conn_check.sh --hop flow1-vault-to-ci
+
+# Equivalent by hand (needs jq on the Vault node):
 curl -s https://<ci-ctrl>/oidc/.well-known/openid-configuration | jq .jwks_uri
 curl -s "$(curl -s https://<ci-ctrl>/oidc/.well-known/openid-configuration | jq -r .jwks_uri)" | jq '.keys|length'
 ```
