@@ -8,6 +8,44 @@ CloudBees CD/RO, and Ansible Automation Platform (AAP). Newest first.
 
 ---
 
+## 2026-10-08
+
+Added the **Venafi PKI secrets engine** integration: Vault Enterprise **1.21.0** plus
+`venafi-pki-backend` **v0.16.0**. Vault issues TLS certificates through TPP policy folders and
+never holds a CA key.
+
+### Added
+- **`vault-integrations/08-venafi-pki-secrets-engine.md`** — the full path: TPP prerequisites
+  (API integration `hashicorp-vault-by-venafi`, scope `certificate:manage,revoke`, folder
+  permissions and policy locks), per-node install, catalog registration pinned with `-version`,
+  mount in `AUT`, two-refresh-token bootstrap, roles, least-privilege policy, Enterprise 1.21
+  operational notes, troubleshooting and a 9-step verification.
+- **`examples/venafi-pki-install-node.sh`** — per-node installer. Checks the zip against the
+  published hash and the binary against the in-zip `SHA256SUM` and the pinned hash. Rejects a
+  symlinked or `noexec` plugin directory.
+- **`examples/venafi-pki-configure.sh`** and **`examples/venafi-pki-consumer.hcl`** — one-shot
+  configuration, plus the consumer policy.
+- **Firewall flow #11** (every Vault node → TPP `/vedsdk`, `/vedauth`) in `00` §4, and
+  `tpp-vault` targets with per-node `flow11-*` hops in `shared/targets.conf`.
+
+### Why these choices
+- **v0.16.0 is the floor**, because it fixes cross-role private-key disclosure and cross-role
+  revoke. v0.17.0 (2026-08-26) exists; the upgrade path is documented, not applied.
+- **Catalog pinned to the *binary* hash** (`48eec755…c99ec`, verified from the release zip). The
+  release page lists only zip hashes, and registering one of those fails at mount time.
+- **Names are restricted in the Vault ACL** (`allowed_parameters`) as well as by TPP domain
+  whitelisting, because the plugin's roles have no `allowed_domains`.
+- **`store_pkey=false` by default**, so private keys do not sit in Vault storage unless
+  prevent-re-issue is needed.
+- **One token set per Venafi secret per cluster.** Refresh tokens are single-use. Performance
+  replication of the mount is flagged *[Verify]*.
+
+### Not verified
+- The install script passed `bash -n` but was not executed on a Linux host (no Docker daemon
+  available). Nothing was run against a live Vault or TPP.
+
+---
+
 ## 2026-08-27
 
 Made the **firewall matrix runnable**. The matrix is restated in three guides
