@@ -46,7 +46,7 @@ All three converge on Vault namespace **`AUT`**, owned by the Automation team.
    ┌───────────────────────────────────────────────────────────────────────────────┐
    │  Vault Enterprise cluster (VMs, Raft, 1.20.8+ent)   namespace: AUT                │
    │   auth/jwt-ci   auth/approle                                                      │
-   │   secret/ (KV v2)   ssh/ (SSH CA)   [pki/ optional]                               │
+   │   secret/ (KV v2)   ssh/ (SSH CA)   venafi-pki/ (08)                             │
    │   audit device ── syslog ──► SIEM                                                 │
    └───▲──────────────▲───────────────▲──────────────────────────────▲────────────────┘
        │ JWKS pull     │ AppRole login  │ token+read                   │ token+read
@@ -95,6 +95,7 @@ Central Vault with systems in separate zones ⇒ every flow below must be explic
 | 8 | AAP EEs / CI agents | managed nodes | 22 | SSH using signed certs | data plane |
 | 9 | Vault nodes | SIEM/syslog collector | 514/6514 | Audit stream | Vault → SIEM |
 | 10 | AAP (node-trust playbook) | `<vault-vip>` `/v1/AUT/ssh/public_key` | 8200 | Fetch SSH CA public key for nodes | AAP → Vault |
+| 11 | **every** Vault node | Venafi TPP `/vedsdk/*`, `/vedauth/*` | 443 | Venafi PKI secrets engine: enrollment, revoke, token refresh (guide `08`) | **Vault → TPP** (all nodes, not just leader) |
 
 > Flow #1 is the classic failure: JWT auth silently fails if Vault cannot reach each controller's
 > `/.well-known/openid-configuration` + JWKS. Validate it first (see `05-operations-appendix.md`).
