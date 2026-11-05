@@ -1,0 +1,49 @@
+# 04 — ALTERNATIVE to cert-manager: the Vault Agent Injector (mutating webhook) renders a cert
+# from venafi-pki/issue/<role> into the pod (runbook 09, section K-alt).
+#
+# Use it for workloads that cannot use a Kubernetes Secret, or that already use the injector.
+# Vault generates the key here (issue/), so the policy's CN/SAN globs DO apply (with the comma
+# caveat in guide 08 §8). Install the injector only, pointed at the external Vault:
+#   helm install vault hashicorp/vault -n vault --create-namespace \
+#     --set global.externalVaultAddr=https://vault-vip.corp.example.com:8200 \
+#     --set server.enabled=false --set injector.enabled=true
+#
+# Vault side: a Kubernetes auth role "web-agent" bound to SA venafi-demo/web, policy venafi-pki-web,
+# and that SA bound to system:auth-delegator (same TokenReview reasoning as 00-*.yaml).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: web
+  namespace: venafi-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: venafi-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: web }
+  template:
+    metadata:
+      labels: { app: web }
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/namespace: "AUT"
+        vault.hashicorp.com/auth-path: "auth/kubernetes/automation-k8s"
+        vault.hashicorp.com/role: "web-agent"
+        vault.hashicorp.com/tls-secret: "vault-listener-ca"     # k8s Secret holding ca.crt for Vault's listener
+        vault.hashicorp.com/ca-cert: "/vault/tls/ca.crt"
+        vault.hashicorp.com/agent-inject-secret-tls.pem: "venafi-pki/issue/web"
+        # pkiCert re-issues only when the current cert nears expiry (not on every render).
+        vault.hashicorp.com/agent-inject-template-tls.pem: |
+          {{- with pkiCert "venafi-pki/issue/web" "common_name=web1.aut.corp.example.com" "alt_names=web1.aut.corp.example.com" "ttl=720h" -}}
+          {{ .Cert }}{{ .CA }}{{ .Key }}
+          {{- end }}
+    spec:
+      serviceAccountName: web
+      containers:
+        - name: web
+          image: registry.corp.example.com/nginx-unprivileged:stable   # any image from your internal registry
+          ports: [{ containerPort: 8443 }]

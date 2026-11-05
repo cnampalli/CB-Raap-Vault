@@ -46,7 +46,7 @@ All three converge on Vault namespace **`AUT`**, owned by the Automation team.
    ┌───────────────────────────────────────────────────────────────────────────────┐
    │  Vault Enterprise cluster (VMs, Raft, 1.20.8+ent)   namespace: AUT                │
    │   auth/jwt-ci   auth/approle                                                      │
-   │   secret/ (KV v2)   ssh/ (SSH CA)   [pki/ optional]                               │
+   │   secret/ (KV v2)   ssh/ (SSH CA)   venafi-pki/ (08)                             │
    │   audit device ── syslog ──► SIEM                                                 │
    └───▲──────────────▲───────────────▲──────────────────────────────▲────────────────┘
        │ JWKS pull     │ AppRole login  │ token+read                   │ token+read
@@ -95,6 +95,10 @@ Central Vault with systems in separate zones ⇒ every flow below must be explic
 | 8 | AAP EEs / CI agents | managed nodes | 22 | SSH using signed certs | data plane |
 | 9 | Vault nodes | SIEM/syslog collector | 514/6514 | Audit stream | Vault → SIEM |
 | 10 | AAP (node-trust playbook) | `<vault-vip>` `/v1/AUT/ssh/public_key` | 8200 | Fetch SSH CA public key for nodes | AAP → Vault |
+| 11 | **every** Vault node | Venafi TPP `/vedsdk/*`, `/vedauth/*` | 443 | Venafi PKI secrets engine: enrollment, revoke, token refresh (guide `08`) | **Vault → TPP** (all nodes, not just leader) |
+| 12 | **every** Vault node | each Kubernetes API server | 6443 | `TokenReview` for Kubernetes-auth logins (cert-manager, Vault Agent Injector) — guides `08`/`09` | **Vault → K8s** (all nodes) |
+| 13 | Kubernetes nodes (cert-manager, agent pods) | `<vault-vip>` | 8200 | Kubernetes-auth login + `venafi-pki/sign` / `issue` | K8s → Vault |
+| 14 | Venafi engineer's admin host | `<vault-vip>` | 8200 | One-off: write the Venafi secret (bootstrap) and run the proof | admin → Vault |
 
 > Flow #1 is the classic failure: JWT auth silently fails if Vault cannot reach each controller's
 > `/.well-known/openid-configuration` + JWKS. Validate it first (see `05-operations-appendix.md`).
@@ -214,6 +218,8 @@ not by additional namespaces (per the agreed operating model).
 | `04-aap-cert-auth-ssh.md` | **AAP auth is now hardened AppRole** (see `../getting-started/04-aap-approle-ssh.md`); this file retains mTLS cert auth as the documented alternative + SSH role, node-trust playbook, 2.7 note |
 | `05-operations-appendix.md` | Firewall validation, TTL/SLA table, rotation & DR, troubleshooting, open follow-ups |
 | `06-static-key-jwt-module-uplift.md` | How to uplift Prescient's `vault-enterprise-terraform` `vault-auth-jwt` module to validate a JWT by **static public key** (`jwt_validation_pubkeys`) so CDRO's discovery-less ZeroTrust JWT works — full module files, schema/validator/config diffs, apply/verify/rollback |
+| `08-venafi-pki-secrets-engine.md` | **Reference:** Venafi TPP-backed TLS issuance through `venafi-pki-backend` v0.16.0 on Vault 1.20.8+ent — how it works (verified from source), prerequisites, catalog/mount/roles, the Venafi-secret bootstrap, policies and their limits, Kubernetes consumers, ops, troubleshooting |
+| `09-venafi-pki-team-runbook.md` | **Runbook:** step-by-step for the Venafi team (P1–P11), Vault team (V1–V14) and Kubernetes team (K1–K8, cert-manager or Agent Injector), plus the evidence pack E1–E14 that proves Venafi governs Vault's certificates |
 
 > **Beginner step-by-step version:** a task-oriented, copy-paste guide series lives in
 > [`../getting-started/`](../getting-started/) (README + 00–05). Use it to *do* the integration; use this
