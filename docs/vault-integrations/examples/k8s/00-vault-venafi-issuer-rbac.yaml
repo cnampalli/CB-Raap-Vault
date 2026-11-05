@@ -1,0 +1,49 @@
+# 00 — identity cert-manager uses to log in to Vault (runbook 09, step K2).
+# No static Vault token or AppRole secret is stored in the cluster: cert-manager mints a
+# 10-minute token for this ServiceAccount on every Vault login (cert-manager >= 1.12).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-venafi-issuer
+  namespace: cert-manager          # a ClusterIssuer's SA must live in cert-manager's cluster resource namespace
+---
+# Let the cert-manager controller request tokens for THIS ServiceAccount only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-venafi-issuer-tokenrequest
+  namespace: cert-manager
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts/token"]
+    resourceNames: ["vault-venafi-issuer"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-venafi-issuer-tokenrequest
+  namespace: cert-manager
+subjects:
+  - kind: ServiceAccount
+    name: cert-manager             # the controller's ServiceAccount (Helm default name)
+    namespace: cert-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-venafi-issuer-tokenrequest
+---
+# Vault runs OUTSIDE the cluster and stores no reviewer token, so it calls TokenReview using the
+# caller's own token. That token's ServiceAccount therefore needs system:auth-delegator.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-venafi-issuer-auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: vault-venafi-issuer
+    namespace: cert-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator

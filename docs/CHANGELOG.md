@@ -8,6 +8,58 @@ CloudBees CD/RO, and Ansible Automation Platform (AAP). Newest first.
 
 ---
 
+## 2026-11-05
+
+Re-targeted the **Venafi PKI secrets engine** work (PR #6) to **Vault Enterprise 1.20.8+ent** with
+`venafi-pki-backend` **v0.16.0** already placed on the VMs by **Ansible**, added the **team-by-team
+runbook**, the **Kubernetes (cert-manager / Agent Injector) path** and a **proof-of-integration tool**.
+Matching Terraform is in `vault-enterprise-config` (`docs/VENAFI_PKI.md`).
+
+### Added
+- **`vault-integrations/09-venafi-pki-team-runbook.md`** — agreement sheet, RACI, and exact steps for the
+  Venafi team (P1–P11), Vault team (V1–V14) and Kubernetes team (K1–K8 + Agent-Injector alternative),
+  plus the evidence pack **E1–E14** and a sign-off checklist.
+- **`tools/venafi_pki_proof.py`** — evidence report (Markdown + JSON): chain to an out-of-band enterprise
+  root, TPP inventory by thumbprint under the expected folder, TPP `Origin = HashiCorp Vault`, refused
+  out-of-policy name, revoke; `--cert-file` mode for cert-manager secrets. Python 3.6+, stdlib only.
+- **Examples:** `ansible/venafi-pki-verify.yml` and `venafi-pki-verify-node.sh` (prove the Ansible-placed
+  binary on every node, incl. TLS to TPP with the trust bundle), `venafi-pki-bootstrap-secret.sh`
+  (Venafi team writes the TPP tokens through a wrapped, write-only, 30-minute token),
+  `k8s/00–04` (RBAC, ClusterIssuer, demo Certificate, approver-policy, Agent Injector) and
+  `k8s/verify-cert-manager.sh`.
+- **Firewall flows #12–#14** (Vault → K8s API TokenReview; K8s → Vault; bootstrap host → Vault) in `00` §4
+  and `shared/targets.conf` (with per-node `flow12-*` hops).
+
+### Changed
+- **Guide 08** rewritten as the reference: Vault **1.20.8+ent** (was 1.21.0); binary **verified, not
+  installed** (Ansible owns placement; the installer is now a fallback); Terraform path via
+  `vault-enterprise-config`; Kubernetes consumers; tested/not-tested section.
+- `venafi-pki-configure.sh` no longer writes TPP tokens (moved to the bootstrap script); adds the
+  `k8s-cert-manager` role and the cert-manager policy; `host-csr-aut` uses `key_type=any`.
+
+### Fixed (were wrong in the 2026-10-08 version)
+- **`vcert getcred --password-prompt` does not exist.** Omit `--password` and vcert prompts. Also
+  `--client-id` must be passed — vcert's default is `vcert-cli`.
+- **`chain_option` is the root's position**, not "leaf first". `last` is required for cert-manager.
+- **`refresh_interval` is clamped**, not rejected, to (access-token lifetime − 30 s). Writing the secret
+  spends the first refresh token immediately. Refresh is lazy and leader-only; the grant's
+  `refresh_until` is a hard stop that needs a re-bootstrap.
+- **The ACL does not restrict names reliably** — tested: `alt_names="evil.com,x.aut…"` passes a
+  `*.aut…` glob and the cert gets `DNS:evil.com`; on `sign/` names come from the CSR. TPP domain
+  whitelisting is the control; approver-policy adds one for Kubernetes.
+- The plugin does **not** copy the CN into the SANs — consumers must send `alt_names`.
+- `alt_names = []` (any value) in the consumer policy replaced with a glob plus the caveat.
+
+### Tested / not tested
+- Tested on Vault **Community 1.20.4** (Enterprise needs a licence): Terraform apply + idempotent re-plan
+  of the `vault-enterprise-config` modules, 12 ACL cases with real tokens incl. cert-manager's exact
+  `sign/` payload, the proof tool (11 checks, 7 failure scenarios, cert-file mode), the node-verify,
+  bootstrap and configure scripts.
+- **Not run:** the `venafi-pki-backend` binary itself (executing a third-party plugin was not permitted
+  in the test environment), namespaces, a real TPP, Ansible, Kubernetes, Sentinel.
+
+---
+
 ## 2026-10-08
 
 Added the **Venafi PKI secrets engine** integration: Vault Enterprise **1.21.0** plus

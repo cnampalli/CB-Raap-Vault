@@ -1,25 +1,38 @@
-# 08 — Vault ⇄ Venafi (CyberArk Certificate Manager) PKI secrets engine
+# 08 — Vault ⇄ Venafi (CyberArk Certificate Manager) PKI secrets engine — reference
 
-> **Scope:** issue X.509 **TLS certificates** from Vault where **Venafi TPP** (now *CyberArk Certificate
-> Manager, Self-Hosted*) is the policy authority and the enterprise CA does the signing. Vault never
-> holds a CA key. Every certificate lands in the TPP inventory, so the PKI team can see it.
+> **Scope:** Vault issues X.509 **TLS certificates** while **Venafi TPP** (now *CyberArk Certificate
+> Manager, Self-Hosted*) is the policy authority and the enterprise CA signs. Vault never holds a CA
+> key, and every certificate lands in the TPP inventory, so the PKI team sees it. Kubernetes workloads
+> get the same certificates through **cert-manager** (or the Vault Agent Injector webhook).
 >
-> **Pinned versions:**
+> **This is the "how it works and why" reference. To _do_ the integration, follow the step-by-step,
+> team-by-team runbook: [`09-venafi-pki-team-runbook.md`](09-venafi-pki-team-runbook.md).**
+>
+> **Pinned versions**
 >
 > | Component | Version | Notes |
 > |---|---|---|
-> | Vault Enterprise | **1.21.0+ent** | Raft, VMs, namespace **`AUT`** (as in guide `01`) |
-> | `venafi-pki-backend` | **v0.16.0** (2026-07-02) | Built with go1.25.7 and `vault/sdk` v0.25.1 |
-> | TPP / Certificate Manager, Self-Hosted | must support the `hashicorp-vault-by-venafi` API integration | 20.1+ for API integrations; the plugin README badge states 17.3+ for the product line |
+> | Vault Enterprise | **1.20.8+ent** | Raft, VMs, namespace **`AUT`** (guide `01`). In `vault-enterprise-config` the same namespace is the `automation` application |
+> | `venafi-pki-backend` | **v0.16.0** (2026-07-02) | Embeds vcert **v5.13.7**. Binary already placed on every node by **Ansible** |
+> | TPP / Certificate Manager, Self-Hosted | must offer the `hashicorp-vault-by-venafi` API integration with token refresh | API integrations exist from 20.1 |
+> | cert-manager | **≥ 1.15** (checked against 1.21.3 source) | `serviceAccountRef` needs ≥ 1.12, `serviceAccountRef.audiences` needs ≥ 1.15 |
+> | Terraform `hashicorp/vault` | 3.23.0 (unchanged) | No `vault_plugin` / mount `plugin_version` until 4.4.0, so `vault-enterprise-config` uses `vault_generic_endpoint` |
 >
-> **Not in scope:** code signing. Container signing keys stay in CodeSign Protect and are **never** in
+> **Not in scope:** code signing. Container-signing keys stay in CodeSign Protect and are **never** in
 > Vault (see [`../container-signing/03-vault-secrets.md`](../container-signing/03-vault-secrets.md)).
-> This guide covers TLS server and client certificates only.
 >
-> **Working examples:**
-> [`examples/venafi-pki-install-node.sh`](examples/venafi-pki-install-node.sh) (run on every Vault node),
-> [`examples/venafi-pki-configure.sh`](examples/venafi-pki-configure.sh) (run once, as a Vault admin),
-> [`examples/venafi-pki-consumer.hcl`](examples/venafi-pki-consumer.hcl) (consumer policy).
+> **Files**
+>
+> | File | Who runs it | Purpose |
+> |---|---|---|
+> | [`examples/ansible/venafi-pki-verify.yml`](examples/ansible/venafi-pki-verify.yml) | Vault team | Prove the Ansible-placed binary on **every** node (hash, owner, mode, `noexec`, symlink, trust bundle, TLS to TPP) |
+> | [`examples/venafi-pki-verify-node.sh`](examples/venafi-pki-verify-node.sh) | Vault team | The same checks on one node, without Ansible |
+> | [`examples/venafi-pki-configure.sh`](examples/venafi-pki-configure.sh) | Vault team | CLI alternative to the Terraform in `vault-enterprise-config`: register, mount, roles, policies |
+> | [`examples/venafi-pki-bootstrap-secret.sh`](examples/venafi-pki-bootstrap-secret.sh) | Vault team, then Venafi team | Write the Venafi secret (TPP tokens) once, through a wrapped write-only token |
+> | [`examples/venafi-pki-consumer.hcl`](examples/venafi-pki-consumer.hcl) | Vault team | Consumer policy (issue / sign / cert-manager variants) |
+> | [`examples/k8s/`](examples/k8s/) | Kubernetes team | cert-manager RBAC, ClusterIssuer, demo Certificate, approver-policy, Agent Injector demo, `verify-cert-manager.sh` |
+> | [`../../tools/venafi_pki_proof.py`](../../tools/venafi_pki_proof.py) | Anyone with a consumer token | Evidence report that Venafi really backs Vault's certificates |
+> | [`examples/venafi-pki-install-node.sh`](examples/venafi-pki-install-node.sh) | Vault team | Fallback installer only (Ansible is the primary path) |
 
 ---
 
@@ -31,369 +44,444 @@ v0.16.0 is a **security release**. Do not deploy anything older.
 |---|---|
 | CWE-639: prevent **cross-role private key disclosure** (VC-53759) | Before 0.16.0, a token allowed to read certificates under one role could read another role's stored private key. This matters whenever `store_pkey=true` |
 | CWE-639: **cross-role revoke and delete** (VC-53760) | A consumer of role A could revoke role B's certificates |
-| CWE-476: nil dereference on a **non-existent role** (VC-53758) | Unauthenticated-adjacent DoS of the plugin process |
+| CWE-476: nil dereference on a **non-existent role** (VC-53758) | DoS of the plugin process |
 | Certificate revocation identifiers fixed | Revocation now targets the right certificate in TPP |
 
 > **v0.17.0 is already out (2026-08-26).** It adds `key_bits`/`key_type` to the role read output, a
 > local-certificate **delete** endpoint, and vcert v5.13.9. Nothing in this guide changes for 0.17.0.
-> §10 shows the in-place upgrade.
+> §12 shows the in-place upgrade.
 
 ---
 
 ## 2. How it works
 
 ```
- Consumer (CI / CDRO / AAP)                Vault Enterprise 1.21 (ns AUT)                    Venafi TPP                 Enterprise CA
- ──────────────────────────               ─────────────────────────────────                 ───────────                ─────────────
-  1  login (jwt-ci / approle / jwt-cdro) ─►  token + policy venafi-pki-consumer
-  2  write venafi-pki/issue/web-aut ──────►  role "web-aut" → venafi secret "tpp"
-                                             plugin generates key + CSR locally
-                                          3  POST /vedsdk/certificates/request ──────────►  policy-folder checks
-                                                (Bearer access_token)                       (DN, key size, domains)  ─►  signs
-                                          4  poll /vedsdk/certificates/retrieve ◄──────────  cert + chain       ◄────────
-  5  ◄── certificate, issuing_ca, chain, private_key (+ lease if generate_lease=true)
-                                             (optional) store cert/key in Vault storage
+ Consumer                                   Vault Ent 1.20.8 (ns AUT)                      Venafi TPP               Enterprise CA
+ ────────                                   ─────────────────────────                      ──────────               ─────────────
+ CI / AAP / CDRO hand-off                    venafi-pki/issue/<role>  (Vault makes key+CSR)
+ cert-manager (K8s)  ─ sign/<role> + CSR ──► venafi-pki/sign/<role>   (CSR only, key stays in the cluster)
+ Vault Agent Injector ─ issue/<role> ──────►        │
+                                                    │ 1 (if due) refresh access token  POST /vedauth/authorize/token
+                                                    │ 2 POST /vedsdk/certificates/request  ──────► folder policy ─────► signs
+                                                    │   (custom field Origin="HashiCorp Vault")     (DN, key, domains)
+                                                    │ 3 poll /vedsdk/certificates/retrieve ◄──────  cert + chain ◄──────
+ ◄── certificate, issuing_ca, ca_chain[], serial_number, expiration, (private_key on issue/) ──┘
 ```
 
-- **Key generation:** by default the **plugin** generates the key pair and sends only a CSR
-  (`service_generated_cert=false`). With `sign/` the consumer generates the key and Vault never sees it.
-  Prefer `sign/` for long-lived service identities.
-- **Policy authority:** the **TPP policy folder** decides subject DN, key size, allowed domains,
-  validity and CA template. The plugin's role has **no `allowed_domains`** setting, unlike Vault's
-  built-in `pki`. So name restriction belongs in **two** places: TPP domain whitelisting, and Vault ACL
-  `allowed_parameters` (see §8).
-- **API:** the plugin uses the same API shape as Vault's built-in PKI engine for issue, sign and
-  revoke. The CA-management endpoints do not exist.
-- **Endpoints** (from the v0.16.0 source): `venafi/<name>`, `roles/<name>`, `issue/<role>`,
-  `sign/<role>`, `revoke/<role>`, `cert/<id>`, `certs/`.
+**Facts this guide relies on** (read from the v0.16.0 / vcert v5.13.7 / cert-manager v1.21.3 sources,
+not from marketing pages):
+
+| Topic | Behaviour |
+|---|---|
+| **Key generation** | `issue/` — the **plugin** generates the key pair locally and sends TPP only a CSR. `sign/` — the caller sends a CSR, Vault never sees the key. Prefer `sign/` for long-lived identities and for Kubernetes |
+| **Name control** | Roles have **no `allowed_domains`**. TPP's folder **domain whitelist** (CN and SANs) is the authoritative control. Vault ACL `allowed_parameters` is only a pre-filter (see §9 — it is bypassable) |
+| **`sign/` ignores name parameters** | `sign/` accepts only `csr`, `ttl`, `custom_fields`, `retry`; CN and SANs come from the CSR. `common_name`, `alt_names`, `ip_sans`, `uri_sans`, `exclude_cn_from_sans` are ignored (with a warning) |
+| **CN is not copied into SANs** | On `issue/`, the plugin puts only `alt_names`/`ip_sans` into the SANs. Send the CN in `alt_names` too, or modern TLS clients will reject the certificate |
+| **Origin marker** | Every request carries the TPP custom field **`Origin = "HashiCorp Vault"`**, written onto the certificate object. That is how TPP proves a certificate came through Vault (proof check P9) |
+| **Response fields** | `certificate`, `issuing_ca`, `ca_chain` (list), `certificate_chain` (leaf+chain, one string), `serial_number`, `expiration`, `private_key` (issue only), `certificate_uid` (unless `no_store`). These are the fields cert-manager parses |
+| **`chain_option`** | Position of the **root**: `last` (default) = `ca_chain` is intermediates then root, so `issuing_ca = ca_chain[0]` is the real issuer. `first` puts the root first — **cert-manager then records the root as the issuer**. Use `last` |
+| **`key_type: any`** | Valid for `sign/` only; `issue/` with `any` is refused ("only signing") |
+| **Tokens: first write** | Writing the Venafi secret makes the **active node call TPP immediately** and spend the first refresh token. A successful write therefore already proves flow #11, the trust bundle, `client_id` and scope |
+| **Tokens: refresh** | Lazy: on an `issue/`/`sign/` call after `next_refresh`. Only the **active node** refreshes (performance standbys forward). `refresh_interval` is **clamped** to (access-token lifetime − 30 s); it is not rejected |
+| **Tokens: grant expiry** | The TPP grant has a fixed `refresh_until`. After it, refresh fails and **all issuance stops** until the secret is re-bootstrapped with new `vcert getcred` tokens. Calendar it (runbook V14/P11) |
+| **Endpoints** | `venafi/<name>`, `roles/<name>`, `issue/<role>`, `sign/<role>`, `revoke/<role>`, `cert/<id>`, `certs/` |
 
 ---
 
 ## 3. Prerequisites
 
-### 3.1 TPP side (owner: PKI / Venafi team)
+### 3.1 TPP side (owner: Venafi / PKI team — runbook P1–P8)
 
 | # | Item | Detail |
 |---|---|---|
-| T1 | **API integration** | **`hashicorp-vault-by-venafi`** ("Venafi Secrets Engine for HashiCorp Vault"). Scope **`certificate:manage,revoke`**. Leave out `revoke` if Vault must never revoke |
-| T2 | **Service identity** | A dedicated local or AD account, e.g. `svc-vault-pki`, that is allowed to use the T1 integration. No other use |
-| T3 | **Policy folder** per trust domain | e.g. `\VED\Policy\Certificates\Automation\Vault\AUT`. Grant T2 **View, Read, Write, Create** on it, and nothing above it |
-| T4 | **Policy on the folder** | Subject O/OU/L/ST/C locked. CA template set. Management Type **not locked**, or locked to *Enrollment*. CSR generation **not** locked to *Service Generated*. *Generate key/CSR on application* not locked, or locked to *No*. **Disable Automatic Renewal = Yes** (Vault consumers renew, not TPP). Key size ≥ 2048. **Domain whitelisting set** |
-| T5 | **CA turnaround** | The CA must issue in **under 60 s**. Raise `server_timeout` (§7) if it is slower |
-| T6 | **Token lifetime** | Note the access-token validity configured on the T1 integration. It drives `refresh_interval` (§6) |
-| T7 | **WebSDK TLS chain** | The root and intermediate certificates of TPP's *web* certificate, as PEM. Becomes `trust_bundle_file` |
+| T1 | **API integration** | Application ID **`hashicorp-vault-by-venafi`** (must equal the secret's `client_id`). Scope **`certificate:manage,revoke`** (drop `revoke` if Vault must never revoke). **Token refresh enabled.** Note the token validity and grant validity |
+| T2 | **Service identity** | `svc-vault-pki` (local or AD), allowed to use T1 only. No interactive use. Password in your PAM vault |
+| T3 | **Policy folders** | `\VED\Policy\Certificates\Vault\AUT\{Web,Hosts,K8s}`. Grant T2 **View, Read, Write, Create** (+ **Revoke** if T1 has `revoke`) on `…\AUT`, nothing above it. Never *Private Key Read* |
+| T4 | **Folder policy** | Subject O/OU/L/ST/C locked. CA template set and locked. Management type **Enrollment**. CSR generation **not** locked to *Service Generated* (both `issue/` and `sign/` send a CSR). Key ≥ RSA 2048 (or the EC curves you allow). **Domain whitelist set, covering SANs.** Wildcards off unless needed. **Disable Automatic Renewal = Yes** (consumers renew) |
+| T5 | **CA turnaround** | Under 60 s preferred. The plugin waits `server_timeout` (default 180 s) |
+| T6 | **Flexible validity** | If consumers must choose `ttl`, the CA template must allow it, and the role needs `issuer_hint` (`m`/`d`/`e`). Otherwise the CA's fixed validity wins (cert-manager copes either way) |
+| T7 | **Trust material** | (a) TPP **web** chain PEM → `trust_bundle_file` on every Vault node. (b) Enterprise **root** (and issuing) CA PEM → proof check P7 and the Kubernetes team |
+| T8 | **Read-only proof token** | A separate integration (e.g. `venafi-pki-proof`, scope `certificate`) for whoever runs the proof tool. Never reuse T1's tokens |
 
-### 3.2 Network (new firewall flow)
+### 3.2 Network
 
 | # | Source | Destination | Port | Purpose |
 |---|---|---|---|---|
-| **11** | **every Vault node** | TPP `/vedsdk/*`, `/vedauth/*` | 443 | Enrollment, retrieval, revocation and **token refresh** |
+| **11** | **every** Vault node | TPP `/vedsdk/*`, `/vedauth/*` | 443 | Enrollment, retrieval, revocation, **token refresh**. The active node does it, and any node can become active |
+| **12** | **every** Vault node | each Kubernetes API server | 6443 | `TokenReview` for the Kubernetes auth login used by cert-manager / the Agent Injector |
+| **13** | Kubernetes nodes (cert-manager, agent pods) | `<vault-vip>` | 8200 | Login + `sign/` / `issue/` |
+| **14** | Venafi engineer's admin host | `<vault-vip>` | 8200 | One-off: write the Venafi secret (bootstrap), and the proof run |
 
-The plugin runs on whichever node is the **active** node. Open the flow from **all** nodes, or the first
-leader election breaks issuance. Prove it from every node with
-`docs/shared/conn_check.sh --hop flow11-vault-01-to-tpp` (and `-02`, `-03`). The `tpp-vault` targets
-and hops are in `docs/shared/targets.conf`.
+Prove #11 from **each** node: `docs/shared/conn_check.sh --hop flow11-vault-0N-to-tpp` (and the
+Ansible play with `-e tpp_host=…`). #12 and #13 have targets in `docs/shared/targets.conf` too.
 
 ### 3.3 Vault side
 
-- `plugin_directory` set in the server config of **every** node. It must be a **real directory, not a
-  symlink**, on a filesystem **not mounted `noexec`**, and owned by the `vault` user.
-- The same binary (same SHA-256) in that directory on **every** node, before the plugin is registered.
-- An admin token able to write `sys/plugins/catalog` in the **root** namespace. The plugin catalog is
-  root-only on Enterprise, while mounts live in `AUT`.
+- `plugin_directory` set in the server config of **every** node — a **real directory, not a symlink**,
+  **not on a `noexec`** filesystem, owned so the `vault` user can execute the binary.
+- The **same binary (same SHA-256)** on every node before registration (Ansible has done this).
+- An admin token with `sudo` on **root** `sys/plugins/catalog/*` (the catalog is root-only) and admin
+  rights in `AUT`. In `vault-enterprise-config` the root pipeline's `jenkins-ci-admin` policy now has it.
 
 ---
 
-## 4. Install the binary on every node
+## 4. The plugin binary (placed by Ansible)
 
-Run [`examples/venafi-pki-install-node.sh`](examples/venafi-pki-install-node.sh) on each Vault node. It:
+Ansible has dropped `venafi-pki-backend` on the nodes. **Prove it, node by node, before registering**
+(runbook V2) — a wrong hash on a standby only surfaces after a failover, as `checksums did not match`.
 
-1. Verifies the release zip against the **published** SHA-256 for v0.16.0 linux/amd64:
-   `53729133de9c3b2d465d2abd070d722e1ccd0d6cccb9b16c86aaca38031ba0e2`.
-2. Extracts the binary and checks it against the `venafi-pki-backend.SHA256SUM` file shipped inside the zip.
-3. Installs it as `<plugin_directory>/venafi-pki-backend` with mode `0750`, owned by `root:vault`.
-4. Prints the **binary** SHA-256. This value is what you register in §5.
+```bash
+ansible-playbook -i inventory docs/vault-integrations/examples/ansible/venafi-pki-verify.yml -e tpp_host=tpp.corp.example.com
+# or, on one node:
+TPP_HOST=tpp.corp.example.com docs/vault-integrations/examples/venafi-pki-verify-node.sh
+```
 
-Expected binary SHA-256 for **v0.16.0 linux/amd64**:
+Expected **binary** SHA-256 for **v0.16.0 linux/amd64**:
 
 ```
 48eec75510d01cc721f971b68b692838cd5b09d3661082ce9b73a6dd961c99ec
 ```
 
-> **Zip hash vs binary hash.** The release page publishes **zip** hashes. Vault's catalog needs the
-> **binary** hash. Mixing them up gives `checksums did not match` at mount time.
+> **Zip hash vs binary hash.** The release page publishes the **zip** hash
+> (`53729133de9c3b2d465d2abd070d722e1ccd0d6cccb9b16c86aaca38031ba0e2`). The catalog needs the
+> **binary** hash above. Registering the zip hash gives `checksums did not match` at mount time.
 >
-> **Signature (optional, recommended for airgap):** the zip also contains a detached OpenPGP signature,
-> `venafi-pki-backend_linux.sig`, issued by key fingerprint
-> `AC2F327A4C25FBD4282EF02DD0C8AA8AA39E012D`. Get Venafi's public key from an official channel,
-> confirm that fingerprint, then run
-> `gpg --verify venafi-pki-backend_linux.sig venafi-pki-backend`.
+> **Signature (recommended for airgap):** the zip also holds `venafi-pki-backend_linux.sig`, from key
+> fingerprint `AC2F327A4C25FBD4282EF02DD0C8AA8AA39E012D`. Get Venafi's public key from an official
+> channel, confirm the fingerprint, then `gpg --verify venafi-pki-backend_linux.sig venafi-pki-backend`.
 
-**First-time `plugin_directory`:** if the directory is new to the server config, restart the nodes **one at
-a time**: standbys first, then `vault operator step-down` on the leader and restart it last. Check
-`vault operator raft list-peers` between each restart.
+**If `plugin_directory` was newly added to the config**, restart nodes **one at a time**: standbys first,
+then `vault operator step-down` on the leader and restart it last; check `vault operator raft list-peers`
+between restarts. `vault-integrations/examples/venafi-pki-install-node.sh` exists only as a fallback for
+a node Ansible cannot reach.
 
 ---
 
 ## 5. Register the plugin (root namespace)
 
-```bash
-export VAULT_ADDR=https://vault-vip.corp.example.com:8200
-unset VAULT_NAMESPACE                       # catalog is root-only
+**Terraform (recommended)** — `vault-enterprise-config`, `configs/root-namespace.yaml`:
 
+```yaml
+plugins:
+  - type: "secret"
+    name: "venafi-pki-backend"
+    version: "v0.16.0"
+    command: "venafi-pki-backend"
+    sha256: "48eec75510d01cc721f971b68b692838cd5b09d3661082ce9b73a6dd961c99ec"
+```
+
+Applied by the root pipeline (module `vault-plugin-catalog`). Removing an entry does **not** deregister
+it, on purpose: a mount may still run that version.
+
+**CLI:**
+
+```bash
+unset VAULT_NAMESPACE                       # catalog is root-only
 vault plugin register \
     -sha256=48eec75510d01cc721f971b68b692838cd5b09d3661082ce9b73a6dd961c99ec \
-    -command=venafi-pki-backend \
-    -version=v0.16.0 \
+    -command=venafi-pki-backend -version=v0.16.0 \
     secret venafi-pki-backend
-
 vault plugin info -version=v0.16.0 secret venafi-pki-backend
 ```
 
-> **Why `-version`:** pinning a version in the catalog lets you run 0.16.0 and 0.17.0 side by side
-> and move each mount independently with `vault secrets tune -plugin-version` (§10). Without it you
-> get a single unversioned entry, and upgrading means overwriting it in place. The plugin binary does
-> not report its own version, so the catalog value is authoritative. Set it accurately.
+> **Why `-version`:** it lets 0.16.0 and 0.17.0 sit side by side, and each mount moves independently
+> with `vault secrets tune -plugin-version` (§12). The binary does not report its own version, so the
+> catalog value is authoritative — set it accurately.
 
 ---
 
-## 6. Mount in `AUT` and configure the Venafi secret
+## 6. Mount in `AUT`
 
-### 6.1 Enable
+**Terraform (recommended)** — `configs/applications/automation.yaml` → `secret_engines.venafi_pki`
+(module `vault-secret-venafi-pki`). It creates the mount pinned to `plugin_version`, tunes it, and writes
+the roles and generated consumer policies. See `vault-enterprise-config/docs/VENAFI_PKI.md`.
 
-```bash
-vault secrets enable -namespace=AUT \
-    -path=venafi-pki \
-    -plugin-version=v0.16.0 \
-    -description="Venafi TPP-backed TLS issuance" \
-    -max-lease-ttl=2160h \
-    venafi-pki-backend
-```
-
-### 6.2 Get tokens from TPP (once, as the service identity)
-
-The plugin refreshes its own access token. It needs **two independent refresh tokens**:
-`refresh_token` and `refresh_token_2`. Each refresh token is **single-use**, so having two is what
-makes the hand-over safe. Run `vcert getcred` **twice**:
+**CLI:**
 
 ```bash
-vcert getcred -u https://tpp.corp.example.com \
-    --username svc-vault-pki --password-prompt \
-    --client-id hashicorp-vault-by-venafi \
-    --scope "certificate:manage,revoke" \
-    --trust-bundle /etc/vault/tls/tpp-chain.pem --format json > /dev/shm/pair1.json
-# ...repeat to /dev/shm/pair2.json
+vault secrets enable -namespace=AUT -path=venafi-pki -plugin-version=v0.16.0 \
+    -description="Venafi TPP-backed TLS issuance" -max-lease-ttl=2160h venafi-pki-backend
+vault secrets list -namespace=AUT -detailed -format=json | jq '."venafi-pki/" | {type, plugin_version, running_plugin_version}'
 ```
 
-From **pair 1** take `access_token` and `refresh_token`. From **pair 2** take **only** `refresh_token`,
-which becomes `refresh_token_2`. The two access tokens are **not** interchangeable.
+If `AUT` is (or will be) **performance-replicated**, create the mount with `-local` (Terraform:
+`local: true`). Otherwise the secondary inherits the same single-use refresh tokens (§12).
+
+---
+
+## 7. The Venafi secret (TPP tokens)
+
+**Not in Terraform, on purpose.** The secret holds an access token and two refresh tokens. Refresh tokens
+are single-use and the plugin rotates them itself, so a Terraform copy would be stale after the first
+refresh, would sit in clear text in state, and the next apply would overwrite the live tokens.
+
+**Who writes it:** the **Venafi team**, through a write-only, response-wrapped, 30-minute token that the
+Vault team issues — so TPP tokens never pass through the Vault team, and the bootstrap token cannot read
+the secret back (runbook V8 → P9 → V9):
 
 ```bash
-umask 077
-jq -j .access_token  /dev/shm/pair1.json > /dev/shm/access_token     # -j: no trailing newline
-jq -j .refresh_token /dev/shm/pair1.json > /dev/shm/refresh_token
-jq -j .refresh_token /dev/shm/pair2.json > /dev/shm/refresh_token_2
+# Vault team
+NS=AUT ./venafi-pki-bootstrap-secret.sh issue-token        # prints a wrapping token
+# Venafi team (needs vcert v5, vault, jq, a terminal)
+NS=AUT VAULT_WRAPPED_TOKEN=... TPP_URL=https://tpp.corp.example.com TPP_CHAIN=./tpp-chain.pem \
+  ZONE='Certificates\Vault\AUT' ./venafi-pki-bootstrap-secret.sh write-secret
 ```
 
-> `vault write key=@file` keeps any trailing newline, and a token with a newline is rejected by TPP.
-> `jq -j` avoids that. The configure script also strips the newline.
+What `write-secret` does:
 
-### 6.3 Write the Venafi secret
+1. Unwraps the bootstrap token (fails loudly if someone else already used it).
+2. Runs **`vcert getcred` twice** — the plugin needs **two independent refresh tokens**:
 
-```bash
-vault write -namespace=AUT venafi-pki/venafi/tpp \
-    url="https://tpp.corp.example.com" \
-    access_token=@/dev/shm/access_token \
-    refresh_token=@/dev/shm/refresh_token \
-    refresh_token_2=@/dev/shm/refresh_token_2 \
-    client_id="hashicorp-vault-by-venafi" \
-    refresh_interval="12h" \
-    zone='Certificates\Automation\Vault\AUT' \
-    trust_bundle_file="/etc/vault/tls/tpp-chain.pem"
-shred -u /dev/shm/pair*.json /dev/shm/*_token*
-```
+   ```bash
+   vcert getcred -u https://tpp.corp.example.com --username svc-vault-pki \
+       --client-id hashicorp-vault-by-venafi --scope "certificate:manage,revoke" \
+       --trust-bundle ./tpp-chain.pem --format json
+   ```
 
-| Parameter | Value / rule |
+   There is **no `--password-prompt` flag**: leaving `--password` out makes vcert prompt on the terminal,
+   which keeps the password out of `argv`/`ps`. `--client-id` **must** be given — vcert's default is
+   `vcert-cli`, and a token for the wrong client is rejected by the plugin's refresh.
+3. Takes `access_token` + `refresh_token` from pair 1 and **only** `refresh_token` from pair 2
+   (`refresh_token_2`), written with `jq -j` (no trailing newline — `key=@file` keeps one, and TPP rejects it).
+4. Writes the secret. The active node calls TPP right away (first refresh).
+5. Revokes the bootstrap token, shreds the files, and prints **`refresh_until`** — the grant expiry date.
+
+| Field | Value / rule |
 |---|---|
 | `url` | TPP base URL, no `/vedsdk` |
-| `client_id` | Must be the **same** client id used in `vcert getcred` (default `hashicorp-vault-by-venafi`) |
-| `refresh_interval` | Default 30 days, and validated to be ≤ the access-token lifetime. **Set it to ≤ ½ of the token lifetime.** Example: 24 h tokens → `12h` |
-| `zone` | Default policy folder **below `\VED\Policy`**. Roles may override it |
-| `trust_bundle_file` | A **path on every Vault node**, not the PEM content. Copy the same file to the same path on all nodes |
+| `client_id` | `hashicorp-vault-by-venafi` (plugin default) — same as in `getcred` |
+| `refresh_interval` | e.g. `12h`. Effective value is clamped to (access-token lifetime − 30 s). `vault read` shows the effective value |
+| `zone` | Default folder **below `\VED\Policy`**; roles override it |
+| `trust_bundle_file` | A **path on every Vault node**, not PEM content |
 
-> ⚠️ **One token set = one Venafi secret, in one cluster.** When any secret refreshes, the other
-> copies holding the same tokens break. Never write the same tokens to a second secret, mount,
-> namespace or cluster. If the secret ever has to be **re-written**, get **fresh** tokens. The ones
-> you originally supplied may already have been consumed by a refresh.
->
-> **Tokens on the command line:** use the `@file` form shown above, from tmpfs. Never pass tokens as
-> literal arguments; they would land in shell history and `ps`.
+> ⚠️ **One token set = one Venafi secret in one cluster.** Never write the same tokens to a second secret,
+> mount, namespace or cluster: when one refreshes, the others break. To re-write the secret, always get
+> **fresh** tokens (the originals are already spent by the first refresh).
 
 ---
 
-## 7. Roles
+## 8. Roles
 
-One role per **consumer and trust domain**. Each role maps to one TPP folder (`zone`), so TPP
-inventory and ownership follow the role.
+One role per **consumer type and trust domain**; each maps to one TPP folder.
 
 ```bash
-# Short-lived service certs for CI-deployed apps. Vault generates keys; keys are NOT stored in Vault.
-vault write -namespace=AUT venafi-pki/roles/web-aut \
-    venafi_secret=tpp \
-    zone='Certificates\Automation\Vault\AUT\Web' \
-    key_type=rsa key_bits=2048 \
-    chain_option=last \
-    issuer_hint=m \
-    ttl=720h max_ttl=2160h \
-    generate_lease=true \
-    store_by=serial store_pkey=false \
-    server_timeout=180
+# Server certs; Vault generates keys; keys NOT stored in Vault.
+vault write -namespace=AUT venafi-pki/roles/web-aut venafi_secret=tpp \
+    zone='Certificates\Vault\AUT\Web' key_type=rsa key_bits=2048 chain_option=last issuer_hint=m \
+    ttl=720h max_ttl=2160h generate_lease=true store_by=serial store_pkey=false server_timeout=180
 
-# CSR-only role for hosts that keep their own keys (AAP-managed servers)
-vault write -namespace=AUT venafi-pki/roles/host-csr-aut \
-    venafi_secret=tpp \
-    zone='Certificates\Automation\Vault\AUT\Hosts' \
-    issuer_hint=m ttl=2160h max_ttl=8760h \
-    no_store=true
+# CSR-only for hosts that keep their keys (AAP-managed servers).
+vault write -namespace=AUT venafi-pki/roles/host-csr-aut venafi_secret=tpp \
+    zone='Certificates\Vault\AUT\Hosts' key_type=any chain_option=last issuer_hint=m \
+    ttl=2160h max_ttl=8760h no_store=true
+
+# Kubernetes cert-manager (sign/). chain_option MUST be last.
+vault write -namespace=AUT venafi-pki/roles/k8s-cert-manager venafi_secret=tpp \
+    zone='Certificates\Vault\AUT\K8s' key_type=any chain_option=last issuer_hint=m \
+    ttl=720h max_ttl=2160h no_store=true generate_lease=false
 ```
 
 | Parameter | Default (v0.16.0) | Recommendation |
 |---|---|---|
 | `venafi_secret` | — (required) | `tpp` |
-| `zone` | from the secret | Always set it per role. Keeps folders and ownership separate |
-| `key_type` / `key_bits` / `key_curve` | `rsa` / `2048` / `P256` | Must satisfy the folder's locked key policy, or issuance fails |
-| `chain_option` | `last` | `last` = leaf first, then chain |
-| `ttl` / `max_ttl` | — | Honoured **only** if the CA template allows flexible validity. For **Microsoft, DigiCert or Entrust** CAs also set **`issuer_hint`** (`m`, `d`, `e`) |
-| `generate_lease` | `false` | `true` if consumers should get a lease. Revoking the lease then revokes the certificate in TPP; needs the `revoke` scope |
-| `store_by` | `serial` | `serial` or `hash` (needed for *prevent re-issue local*) |
-| `store_pkey` | `false` | **Keep `false`** unless you need prevent-re-issue. If `true`, private keys sit in Vault storage. Safe only with ≥ v0.16.0 because of the cross-role fix |
-| `no_store` | `false` | `true` = store nothing in Vault. Revoke via Vault then needs the serial or thumbprint from your own records |
-| `server_timeout` | `180` (s) | Raise it if the CA is slow (see T5) |
-| `min_cert_time_left` | `720h` | With prevent-re-issue: return the cached cert if it has at least this much validity left |
-| `ignore_local_storage` | `false` | `true` forces a new cert on every call |
-| `service_generated_cert` | `false` | Leave `false`. `true` lets TPP generate the key, which conflicts with T4 |
+| `zone` | from the secret | Always set per role; keeps folders and ownership separate |
+| `key_type` / `key_bits` / `key_curve` | `rsa` / `2048` / `P256` | `issue/` roles: must match the folder's locked key policy. `sign/` roles: `any` |
+| `chain_option` | `last` | **Root position.** Keep `last` (required for cert-manager) |
+| `ttl` / `max_ttl` | — | Honoured **only** with a flexible-validity CA template **and** `issuer_hint` (`m`, `d`, `e`) |
+| `generate_lease` | `false` | `true` gives a lease; revoking it revokes in TPP (needs `revoke` scope). Keep `false` for cert-manager |
+| `store_by` | `serial` | `serial`, `hash` (needed for prevent-re-issue) or `cn` |
+| `store_pkey` | `false` | **Keep `false`.** Safe only with ≥ v0.16.0 |
+| `no_store` | `false` | `true` = keep nothing in Vault (sign/ roles, cert-manager) |
+| `server_timeout` | `180` s | Raise for a slow CA |
+| `min_cert_time_left` / `ignore_local_storage` | `720h` / `false` | Prevent-re-issue tuning (issue/ with `store_by=hash`) |
+| `service_generated_cert` | `false` | Leave `false`; `true` conflicts with T4 |
 
 ---
 
-## 8. Consumer policy (least privilege)
+## 9. Consumer policies — and their limits
 
-The role has no domain restriction, so **restrict names in the ACL** with `allowed_parameters`
-globs. Full file: [`examples/venafi-pki-consumer.hcl`](examples/venafi-pki-consumer.hcl).
+`vault-enterprise-config` generates one per role (`venafi-pki-<role>`); the hand-written equivalent is
+[`examples/venafi-pki-consumer.hcl`](examples/venafi-pki-consumer.hcl). Paths are relative to `AUT`.
 
 ```hcl
 path "venafi-pki/issue/web-aut" {
   capabilities = ["create", "update"]
-  # Once allowed_parameters is set, any parameter NOT listed is rejected.
   allowed_parameters = {
-    "common_name"        = ["*.aut.corp.example.com"]
-    "alt_names"          = []   # [] = any value; tighten if consumers send SANs
-    "ttl"                = []
-    "private_key_format" = []
-    "custom_fields"      = []   # drop if the TPP folder needs none
+    "common_name" = ["*.aut.corp.example.com"]
+    "alt_names"   = ["*.aut.corp.example.com"]
+    "ttl" = [], "private_key_format" = [], "custom_fields" = []
   }
 }
-path "venafi-pki/venafi/*" { capabilities = ["deny"] }   # tokens: admins only
+path "venafi-pki/sign/k8s-cert-manager" {          # cert-manager: exactly what it sends (v1.21)
+  capabilities = ["create", "update"]
+  allowed_parameters = { "csr" = [], "ttl" = [], "common_name" = [], "alt_names" = [], "ip_sans" = [],
+                         "uri_sans" = [], "exclude_cn_from_sans" = [], "custom_fields" = [] }
+}
+path "venafi-pki/venafi/*" { capabilities = ["deny"] }
 path "venafi-pki/roles/*"  { capabilities = ["deny"] }
 ```
 
-Attach the policy to the existing auth roles from guide `01`:
+**Tested on Vault 1.20 with real tokens** (12 cases; see §15):
 
-| Consumer | Auth role | How it calls |
-|---|---|---|
-| CloudBees CI | `auth/jwt-ci` role for the app folder | `vault write -format=json venafi-pki/issue/web-aut common_name=…` in the build (same pattern as the KV read in guide `02`) |
-| CDRO | `auth/jwt-cdro` | The ZeroTrust plugin is **KV-only**. Hand off to a job, or to AAP (guide `07`, Pattern B), which calls `issue/` |
-| AAP | `auth/approle` (guide `04`) or the guide `07` JWT | `community.hashi_vault.vault_write` to `venafi-pki/issue/<role>`, or `sign/` with a CSR made on the node |
+| Request | Result |
+|---|---|
+| `issue/` CN inside the glob | allowed |
+| `issue/` CN `evil.example.com` | **403** |
+| `issue/` with an unlisted parameter (`ip_sans`) | **403** |
+| `issue/` `alt_names` as a JSON list containing `evil.com` | **403** (checked per element) |
+| `issue/` `alt_names="evil.com,x.aut.corp.example.com"` | **allowed — certificate contains `DNS:evil.com`** |
+| cert-manager's exact `sign/` payload | allowed; response has `certificate`, `issuing_ca`, 2-element `ca_chain` |
+| `sign/` with an extra parameter (`key_password`) | **403** |
+| reading `roles/*` or `venafi/*` | **403** |
 
-> **Audit:** the audit device HMACs response fields by default, so `private_key` is **not** written in
-> clear to the SIEM. Do **not** add `private_key` to `audit_non_hmac_response_keys` on this mount.
+> **So: the ACL is a pre-filter, not the control.** Vault globs match commas, and on `sign/` the names
+> come from the CSR. The TPP folder's **domain whitelist (CN and SANs)** must be set (T4). For
+> Kubernetes, add **approver-policy** inside the cluster (`examples/k8s/03-approver-policy.yaml`).
+>
+> **Optional, Enterprise only — Sentinel EGP** to check every name on `issue/`. *Not executed here*
+> (Sentinel is not in Vault Community); test it in a non-production namespace first:
+>
+> ```
+> import "strings"
+> import "types"
+> suffix = ".aut.corp.example.com"
+> names = func() {
+>   out = []
+>   d = request.data else {}
+>   if "common_name" in keys(d) { append(out, d.common_name) }
+>   if "alt_names" in keys(d) {
+>     raw = d.alt_names
+>     parts = raw
+>     if types.type_of(raw) is "string" { parts = strings.split(raw, ",") }
+>     for parts as p { append(out, strings.trim_space(p)) }
+>   }
+>   return out
+> }
+> main = rule { all names() as n { strings.has_suffix(n, suffix) } }
+> ```
+>
+> `vault write -namespace=AUT sys/policies/egp/venafi-pki-names policy=@venafi-pki-names.sentinel
+> paths="venafi-pki/issue/*" enforcement_level="hard-mandatory"`
+
+**Audit:** the audit device HMACs response fields, so `private_key` is not written in clear to the SIEM.
+Do **not** add `private_key` to `audit_non_hmac_response_keys` on this mount.
 
 ---
 
-## 9. Use it
+## 10. Consumers
+
+| Consumer | Auth | Path | Notes |
+|---|---|---|---|
+| CloudBees CI | `auth/jwt-ci` role for the app folder | `issue/web-aut` | `vault write -format=json venafi-pki/issue/web-aut common_name=… alt_names=…` in the build |
+| CDRO | `auth/jwt-cdro` | — | The ZeroTrust plugin is KV-only. Hand off to a job, or to AAP (guide `07`) |
+| AAP | AppRole (guide `04`) or the guide `07` JWT | `issue/` or `sign/host-csr-aut` | `community.hashi_vault.vault_write` |
+| **Kubernetes — cert-manager** (primary) | Kubernetes auth, role `cert-manager-venafi`, audience `vault://vault-venafi` | `sign/k8s-cert-manager` | ClusterIssuer in `examples/k8s/01-*.yaml`. Keys stay in the cluster. RBAC in `00-*.yaml` |
+| **Kubernetes — Vault Agent Injector** (webhook, alternative) | Kubernetes auth, role per app SA | `issue/web-aut` via `pkiCert` | `examples/k8s/04-*.yaml`. Re-issues near expiry, not on every render |
+
+**Kubernetes auth from an external Vault** (VMs): Vault stores **no** reviewer token; it calls
+`TokenReview` with the caller's own token. Therefore the caller's ServiceAccount needs
+`system:auth-delegator`, and that token must also carry the **API server's audience** — which is why the
+ClusterIssuer lists it in `serviceAccountRef.audiences`. In `vault-enterprise-config` the Kubernetes
+role binds `audience: "vault://vault-venafi"`, so a token minted for any other issuer is refused.
+
+---
+
+## 11. Use it (CLI)
 
 ```bash
-# Issue (Vault generates the key)
 vault write -namespace=AUT -format=json venafi-pki/issue/web-aut \
-    common_name="app1.aut.corp.example.com" \
-    alt_names="app1.aut.corp.example.com,app1-int.aut.corp.example.com" ttl=720h
+    common_name="app1.aut.corp.example.com" alt_names="app1.aut.corp.example.com,app1-int.aut.corp.example.com" ttl=720h
 
-# Sign (consumer keeps the key)
-openssl req -new -newkey rsa:2048 -nodes -keyout app1.key -out app1.csr \
-    -subj "/CN=host01.aut.corp.example.com"
-vault write -namespace=AUT -format=json venafi-pki/sign/host-csr-aut csr=@app1.csr
+openssl req -new -newkey rsa:2048 -nodes -keyout host01.key -out host01.csr \
+    -subj "/CN=host01.aut.corp.example.com" -addext "subjectAltName=DNS:host01.aut.corp.example.com"
+vault write -namespace=AUT -format=json venafi-pki/sign/host-csr-aut csr=@host01.csr
 
-# List and read stored certs (roles with store_by and without no_store)
-vault list -namespace=AUT venafi-pki/certs
-vault read -namespace=AUT venafi-pki/cert/<serial>
-
-# Revoke in TPP
+vault list -namespace=AUT venafi-pki/certs                      # roles that store certs
 vault write -namespace=AUT venafi-pki/revoke/web-aut serial_number="<serial>"
-# ...or revoke the lease, when generate_lease=true
-vault lease revoke -namespace=AUT venafi-pki/issue/web-aut/<lease-id>
 ```
 
-TPP custom fields, where the folder requires them:
-`custom_fields="AppOwner=automation,CostCentre=1234"`. For a multi-value field, repeat the name.
+TPP custom fields, where the folder requires them: `custom_fields="AppOwner=automation,CostCentre=1234"`.
 
 ---
 
-## 10. Vault Enterprise 1.21 operational notes
+## 12. Vault Enterprise 1.20 operational notes
 
 | Topic | What to do |
 |---|---|
-| **Every node, same binary** | A mismatched SHA on a standby surfaces only **after failover**, as `checksums did not match`. The install script prints the hash; record it per node |
-| **Plugin upgrade (→ v0.17.0)** | Install the new binary on all nodes under a **new filename** (`venafi-pki-backend-0.17.0`). Register it with `-version=v0.17.0 -command=venafi-pki-backend-0.17.0`. Then run `vault secrets tune -namespace=AUT -plugin-version=v0.17.0 venafi-pki/` and `vault plugin reload -type=secret -plugin=venafi-pki-backend -scope=global`. Roll back by tuning back to `v0.16.0`. Keep the old binary until you are sure |
-| **Performance replication** | If `AUT` is replicated to a PR secondary, the mount and the **Venafi secret (tokens)** are replicated, and the secondary may refresh **the same single-use tokens**. Either create the mount with `-local` on the primary (and configure a separate TPP identity on each cluster), or exclude the path with a paths filter. **[Verify in your topology before enabling PR on this namespace]** |
-| **DR replication** | Fine. A DR secondary is passive and does not refresh tokens until promoted |
-| **Token refresh failing quietly** | When both refresh tokens are spent or expired, every issue call fails with HTTP 401 from TPP. Alert on that string in the Vault server log, and keep the TPP refresh-token lifetime well above `refresh_interval` |
-| **Namespaces** | The catalog is in root. The mount, the Venafi secret, roles and policies are all in `AUT`. A mount in another namespace needs **its own** TPP identity (see the ⚠️ in §6) |
-| **mlock / tmp** | No special handling. The plugin is a normal external plugin process started by Vault |
-| **Backups** | Raft snapshots include the Venafi secret, with live tokens. Treat snapshots as secret material |
+| **Every node, same binary** | A wrong hash on a standby surfaces only **after failover**. Re-run the Ansible verify play after every Ansible change to the plugin dir |
+| **Upgrade (→ v0.17.0)** | Ansible places `venafi-pki-backend-0.17.0` (new file name) on all nodes. Register `-version=v0.17.0 -command=venafi-pki-backend-0.17.0` (Terraform: second `plugins[]` entry). Tune the mount (`plugin_version: v0.17.0`), then `vault plugin reload -type=secret -plugin=venafi-pki-backend -scope=global`. Roll back by tuning to `v0.16.0` and reloading |
+| **Performance replication** | If `AUT` is replicated, a non-local mount replicates the **Venafi secret (tokens)** and the secondary can spend the same single-use tokens. Use `-local` (and a separate TPP identity per cluster) or a paths filter. **[Verify in your topology]** |
+| **DR replication** | Fine: a DR secondary is passive until promoted. After promotion, issue once to confirm the tokens still refresh |
+| **Grant expiry** | Record `refresh_until` printed by the bootstrap. Re-bootstrap ≥ 30 days before it. Nothing else warns you |
+| **Silent token failure** | Both refresh tokens spent or expired → every issue fails with TPP 401 / `invalid_grant`. Alert on those strings in the server log, and run a daily synthetic issue (`venafi_pki_proof.py` on a schedule) |
+| **TPP outage** | New issuance fails; issued certificates keep working. cert-manager retries with back-off |
+| **Namespaces** | Catalog in root; mount, secret, roles, policies in `AUT`. A mount in another namespace needs its **own** TPP identity |
+| **Backups** | Raft snapshots contain the Venafi secret with live tokens. Treat snapshots as secret material |
 
 ---
 
-## 11. Troubleshooting
+## 13. Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `could not execute files outside of configured plugin directory` | `plugin_directory` is a symlink, or the path in the catalog differs | Use a real directory. `-command` is just the filename |
-| `checksums did not match` (only on some nodes or after failover) | Binary differs on that node, or the **zip** hash was registered | Re-run the install script on every node. Register the **binary** hash |
-| `fork/exec … permission denied` | `noexec` mount or wrong owner/mode | Move `plugin_directory` off `noexec`. `chown root:vault`, `chmod 0750` |
-| `x509: certificate signed by unknown authority` (to TPP) | `trust_bundle_file` missing or wrong on the **active** node | Same PEM, same path, on all nodes |
-| `401` / `invalid_grant` after it had worked | Tokens consumed by another copy of the secret, or both refresh tokens expired | Get **two new** token pairs (§6.2) and re-write the secret. Find the duplicate secret |
-| `403` / `Insufficient scope` on revoke | Integration granted without `revoke` | Add the scope on T1 and get new tokens |
-| `PolicyLocked` / `… does not match policy` | Role key type/size or DN conflicts with the folder's locked values | Align the role with the folder (T4) |
-| Cert issued, but `ttl` ignored | CA template has fixed validity, or `issuer_hint` missing | Set `issuer_hint`. Ask the PKI team for a flexible-validity template |
-| Times out at ~180 s | CA slower than `server_timeout` | Raise `server_timeout` on the role. Check CA queueing in TPP |
-| Consumer gets `permission denied` on `issue/` | CN outside the `allowed_parameters` glob | Fix the request, or widen the policy deliberately |
+| `could not execute files outside of configured plugin directory` | `plugin_directory` is a symlink, or `-command` has a path | Real directory; `-command` is a file name |
+| `checksums did not match` (some nodes / after failover) | Different binary on that node, or the **zip** hash registered | Ansible verify play; register the **binary** hash |
+| `fork/exec … permission denied` | `noexec` mount, wrong owner/mode | Move `plugin_directory`; `root:vault` `0750` |
+| Mount: `unknown plugin` / `plugin not found in the catalog` | Application pipeline ran before the root pipeline, or version mismatch | Register first; `plugin_version` must match the catalog exactly |
+| Secret write fails `x509: certificate signed by unknown authority` | `trust_bundle_file` missing/wrong on the **active** node | Same PEM, same path, every node (Ansible `--tags trust_bundle`) |
+| Secret write fails `invalid_grant` / `401` | Tokens already used, or wrong `client_id` (vcert default `vcert-cli`) | New `getcred` ×2 with `--client-id hashicorp-vault-by-venafi` |
+| Works for weeks, then every issue fails with 401 | Grant passed `refresh_until`, or a second copy of the secret spent the tokens | Re-bootstrap; find any duplicate secret/mount/cluster |
+| `403 Insufficient scope` on revoke | Integration lacks `revoke` | Add scope on T1, re-bootstrap |
+| `PolicyLocked` / `… does not match policy` | Key type/size or DN conflicts with the folder | Align role or CSR with T4 |
+| Issued cert has no SANs | Caller sent no `alt_names` (plugin does not copy CN) | Send the CN in `alt_names` |
+| `ttl` ignored | Fixed-validity CA template, or no `issuer_hint` | Set `issuer_hint`; flexible template |
+| cert-manager: `role key type "any" not allowed` | ClusterIssuer path is `issue/…` | Use `venafi-pki/sign/<role>` |
+| cert-manager: `permission denied` on `sign/` | Policy has `allowed_parameters` without cert-manager's full set | Use the cert-manager variant (§9) |
+| cert-manager: Kubernetes login `permission denied` / `invalid audience` | Vault role `audience` ≠ `vault://<ClusterIssuer name>` | Match the name exactly |
+| cert-manager: `TokenReview` 401 / `service account lookup failed` | SA lacks `system:auth-delegator`, or token lacks the API audience, or flow #12 closed | `00-*.yaml`; `serviceAccountRef.audiences`; open #12 |
+| cert-manager: secret's issuer is the **root** | Role has `chain_option=first` | `chain_option=last` |
+| Times out at ~180 s | CA slower than `server_timeout` | Raise `server_timeout`; check CA queue in TPP |
 
 ---
 
-## 12. Verification
+## 14. Verification
 
-1. On every node: `sha256sum <plugin_directory>/venafi-pki-backend` shows `48eec755…c99ec`.
-2. `vault plugin info -version=v0.16.0 secret venafi-pki-backend` shows the same sha256.
-3. `vault secrets list -namespace=AUT -detailed` shows `venafi-pki/` with
-   `plugin_version=v0.16.0`.
-4. Issue a test cert from `web-aut`. It appears in TPP under the role's folder, with the CA chain
-   you expect.
-5. **Cross-role check (the 0.16.0 fix):** with a token holding **only** the `web-aut` policy, `revoke`
-   on `host-csr-aut` is **denied**.
-6. Policy check: issue with `common_name=evil.example.com` → `permission denied`.
-7. Revoke the test cert. TPP shows it revoked, and CRL/OCSP reflect it within the CA's publish interval.
-8. Fail over (`vault operator step-down`), then issue again. This proves the binary, trust bundle and
-   firewall flow #11 are correct on the new leader.
-9. After `refresh_interval` has passed, issue again **without re-writing the secret**. This proves
-   token refresh works.
+Use the evidence pack in [runbook 09 §5](09-venafi-pki-team-runbook.md#5-proof-of-integration--the-evidence-pack).
+In short: `tools/venafi_pki_proof.py` (issue mode from a consumer token, and `--cert-file` mode on a
+cert-manager secret) plus the failover, renewal, revoke and grant-refresh checks listed there.
 
 ---
 
-## 13. Sources
+## 15. What was tested, and what was not
 
-- Plugin README at tag v0.16.0 — <https://github.com/Venafi/vault-pki-backend-venafi/blob/v0.16.0/README.md>
-- Release v0.16.0 (security fixes, zip hashes) — <https://github.com/Venafi/vault-pki-backend-venafi/releases/tag/v0.16.0>
-- Release v0.17.0 — <https://github.com/Venafi/vault-pki-backend-venafi/releases/tag/v0.17.0>
-- Role and secret fields and defaults: `plugin/pki/path_roles.go`, `path_venafi_secrets.go` at tag v0.16.0
-- Vault plugin catalog and versioning — <https://developer.hashicorp.com/vault/docs/plugins/plugin-management>
-- Vault plugin upgrade procedure — <https://developer.hashicorp.com/vault/docs/upgrading/plugins>
-- VCert CLI `getcred` — <https://github.com/Venafi/vcert/blob/master/README-CLI-PLATFORM.md>
+Tested in a disposable lab (Vault **Community 1.20.4** dev server — Vault Enterprise needs a licence;
+Terraform 1.9.8; provider 3.23.0):
+
+- `vault-enterprise-config`: `terraform validate` on both roots; apply of the catalog, Venafi-PKI and
+  Kubernetes-auth modules; a second plan shows **no changes**. Mount pinned via `plugin_version`.
+  The module was driven against Vault's built-in `pki` plugin, pinned by its builtin version, because…
+- …**the `venafi-pki-backend` binary itself was not run**: executing a third-party plugin was not
+  permitted in the test environment. Plugin behaviour above comes from reading its v0.16.0 source.
+- Policies: 12 allow/deny cases with real tokens, including cert-manager's exact `sign/` payload.
+- `venafi_pki_proof.py` against that Vault and a mock TPP (found, not found, 401, no Origin field,
+  wrong folder, wrong trust root, cert-file mode on a cert-manager-shaped secret).
+- `venafi-pki-verify-node.sh` (wrong hash, symlink, wrong group, TLS with right/wrong bundle),
+  `venafi-pki-bootstrap-secret.sh` (wrap → unwrap → write → self-revoke → reuse refused) with a stub vcert,
+  `venafi-pki-configure.sh` (tune branch, roles, all three policies).
+- **Not tested:** namespaces (Enterprise-only), TPP, the Ansible playbook (no Ansible in the lab; parsed
+  only), the Kubernetes manifests (parsed only), the Sentinel snippet.
+
+---
+
+## 16. Sources
+
+- Plugin v0.16.0 source: `plugin/pki/path_venafi_cert_enroll.go`, `path_roles.go`,
+  `path_venafi_secrets.go`, `util.go`, `backend.go` — <https://github.com/Venafi/vault-pki-backend-venafi/tree/v0.16.0>
+- Releases v0.16.0 / v0.17.0 — <https://github.com/Venafi/vault-pki-backend-venafi/releases>
+- vcert v5.13.7 CLI (`cmd/vcert/flags.go`, `passwords.go`) and TPP connector (`Origin` attribute) — <https://github.com/Venafi/vcert/tree/v5.13.7>
+- cert-manager v1.21.3: `internal/vault/vault.go` (sign parameters, token audiences),
+  `pkg/apis/certmanager/v1/types_issuer.go`, Helm `disableAutoApproval` — <https://github.com/cert-manager/cert-manager/tree/v1.21.3>
+- approver-policy v0.29.0 CRD types — <https://github.com/cert-manager/approver-policy>
+- Vault plugin management and upgrades — <https://developer.hashicorp.com/vault/docs/plugins/plugin-management>,
+  <https://developer.hashicorp.com/vault/docs/upgrading/plugins>
+- Terraform provider: `vault_plugin` and mount `plugin_version` first appear in 4.4.0 (3.23.0 lacks both)

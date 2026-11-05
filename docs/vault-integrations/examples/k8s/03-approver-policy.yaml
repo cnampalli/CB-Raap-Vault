@@ -1,0 +1,60 @@
+# 03 — OPTIONAL but recommended: name control INSIDE the cluster (runbook 09, step K6).
+#
+# Why: on sign/ the plugin reads names from the CSR, so the Vault ACL cannot restrict them.
+# TPP domain whitelisting is the authoritative control; approver-policy stops a bad request
+# before it ever leaves the cluster, and per namespace.
+#
+# Requires cert-manager approver-policy (field names checked against v0.29.0) AND cert-manager
+# running with its default approver disabled (Helm: --set disableAutoApproval=true or
+# extraArgs: [--controllers=*,-certificaterequests-approver]). Otherwise every request is still
+# auto-approved and this policy changes nothing.
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: vault-venafi-k8s-names
+spec:
+  allowed:
+    commonName:
+      value: "*.k8s.aut.corp.example.com"
+    dnsNames:
+      values:
+        - "*.k8s.aut.corp.example.com"
+    usages:
+      - server auth
+      - digital signature
+      - key encipherment
+  constraints:
+    maxDuration: 2160h
+    privateKey:
+      algorithm: RSA
+      minSize: 2048
+  selector:
+    issuerRef:
+      name: vault-venafi
+      kind: ClusterIssuer
+      group: cert-manager.io
+---
+# Requests are approved only if the REQUESTER may "use" the policy. Certificates are turned into
+# CertificateRequests by the cert-manager controller, so bind the controller's ServiceAccount.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cert-manager-policy:vault-venafi-k8s-names
+rules:
+  - apiGroups: ["policy.cert-manager.io"]
+    resources: ["certificaterequestpolicies"]
+    verbs: ["use"]
+    resourceNames: ["vault-venafi-k8s-names"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cert-manager-policy:vault-venafi-k8s-names
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cert-manager-policy:vault-venafi-k8s-names
+subjects:
+  - kind: ServiceAccount
+    name: cert-manager
+    namespace: cert-manager

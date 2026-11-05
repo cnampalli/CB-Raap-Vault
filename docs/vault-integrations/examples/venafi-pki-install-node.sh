@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# venafi-pki-install-node.sh — install venafi-pki-backend on ONE Vault node (guide 08 §4).
-# Run as root on EVERY node in the cluster, standbys first. Idempotent.
+# venafi-pki-install-node.sh — FALLBACK installer for venafi-pki-backend on ONE Vault node.
+#
+# The primary path is Ansible (already done for Vault 1.20.8+ent). Use this only for a node Ansible
+# cannot reach, or to rebuild one node by hand. Either way, prove the result with
+# venafi-pki-verify-node.sh (or ansible/venafi-pki-verify.yml) — runbook 09, step V2.
+#
+# Run as root on the node. Idempotent.
 #
 #   ./venafi-pki-install-node.sh /path/to/venafi-pki-backend_v0.16.0_linux.zip [plugin_dir]
 #

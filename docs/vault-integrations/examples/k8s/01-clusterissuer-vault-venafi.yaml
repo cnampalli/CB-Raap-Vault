@@ -1,0 +1,30 @@
+# 01 — ClusterIssuer: Kubernetes -> Vault (venafi-pki/sign/<role>) -> Venafi TPP -> enterprise CA
+# (runbook 09, steps K3–K5). Needs cert-manager >= 1.15 for serviceAccountRef.audiences.
+#
+# Replace every <...>. The NAME of this ClusterIssuer is part of the token audience Vault checks:
+# Vault's Kubernetes role must have  audience = "vault://vault-venafi".
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: vault-venafi
+spec:
+  vault:
+    server: https://vault-vip.corp.example.com:8200
+    # Vault Enterprise namespace that owns the mount (vault-enterprise-config: "automation").
+    namespace: AUT
+    # sign/ — the cluster keeps its private keys; Vault/TPP only see the CSR.
+    path: venafi-pki/sign/k8s-cert-manager
+    # base64 of the CA chain that signed Vault's LISTENER certificate (not the Venafi CA):
+    #   base64 -w0 < vault-listener-ca.pem
+    caBundle: <BASE64_VAULT_LISTENER_CA>
+    auth:
+      kubernetes:
+        role: cert-manager-venafi
+        mountPath: /v1/auth/kubernetes/automation-k8s   # Vault path of THIS cluster's k8s auth mount
+        serviceAccountRef:
+          name: vault-venafi-issuer
+          # Add the API server's audience so Vault can reuse this same token for TokenReview.
+          # Find it with:  kubectl get --raw /.well-known/openid-configuration | jq -r .issuer
+          # (it is the --api-audiences value; on most clusters it equals the issuer URL).
+          audiences:
+            - <API_SERVER_AUDIENCE>
