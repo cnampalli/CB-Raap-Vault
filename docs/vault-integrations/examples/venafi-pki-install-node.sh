@@ -3,7 +3,7 @@
 #
 # The primary path is Ansible (already done for Vault 1.20.8+ent). Use this only for a node Ansible
 # cannot reach, or to rebuild one node by hand. Either way, prove the result with
-# venafi-pki-verify-node.sh (or ansible/venafi-pki-verify.yml) — runbook 09, step V2.
+# venafi-pki-verify-node.sh (or ansible/venafi-pki-verify.yml) — runbook chunk 08 (venafi-pki-runbook/08-vault-nodes.md).
 #
 # Run as root on the node. Idempotent.
 #

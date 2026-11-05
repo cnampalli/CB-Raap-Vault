@@ -8,6 +8,25 @@ CloudBees CD/RO, and Ansible Automation Platform (AAP). Newest first.
 
 ---
 
+## 2026-11-05 — Venafi PKI runbook split into an instructions manual
+
+Split `09-venafi-pki-team-runbook.md` into **17 independent chunks** under
+`vault-integrations/venafi-pki-runbook/`. Each chunk has Who / Needs / Gives, numbered manual (🖱) and
+command (⌨) steps, an **Expected** result per step, *Done when* and *If it fails*.
+
+### Added
+- **Chunk 02 — AD admin access to TPP.** A local TPP account (`tpp_admin`) cannot add AD users or groups
+  to permissions or API integrations, and AD accounts never appear in the TPP Users list. The chunk
+  covers checking the AD connector and Search Roots in VCC, creating an AD admin group, making it a
+  Master Admin, and signing in as AD.
+- AD (ADUC) and local options for the service account (chunk 04), a login test for the service
+  account (chunk 05), and Aperture click-paths for folders, permissions, policy locks and the
+  negative/positive tests (chunk 06).
+
+### Changed
+- `09-venafi-pki-team-runbook.md` is now a map from the old step IDs (P/V/K) to chunks. Guide 08,
+  `00` and `venafi-pki-install-node.sh` point to the chunks.
+
 ## 2026-11-05
 
 Re-targeted the **Venafi PKI secrets engine** work (PR #6) to **Vault Enterprise 1.20.8+ent** with
