@@ -39,21 +39,6 @@ For each of `Web`, `Hosts`, `K8s`:
 | Certificate Authority (CA template) | the CA from A10 | same | same |
 | Management type | Enrollment | Enrollment | Enrollment |
 | CSR generation | allow *User provided*. **Do not lock to Service Generated** | same | same |
-
-**Certificate Authority (CA template).** This tells TPP which CA signs the folder's certificates. A CA
-template is a TPP object that holds the CA server, the CA's certificate template and a login for the CA.
-A TPP admin creates it once; folders only pick it from a list. The field may be labelled *Certificate
-Authority*, *CA Template* or *CA* depending on the TPP version.
-- Can't see the field, or the list is empty? Open a folder where certificates are already issued
-  today and see which CA it uses. Use the same one, or ask whoever owns your CA connection.
-- Write its name into A10, plus its issuer type for Vault's `issuer_hint`: Microsoft → `m`,
-  DigiCert → `d`, Entrust → `e`.
-
-**Why not Service Generated.** *Service Generated* means TPP creates the private key and keeps it.
-Vault never asks for that. With `issue/`, the plugin creates the key on the Vault node. With `sign/`
-(cert-manager), the key stays in the cluster. Either way, TPP only receives a CSR. If the folder is
-locked to Service Generated, TPP rejects those CSRs and every request from Vault fails. It also keeps
-private keys out of TPP, which is why Step 2 gives no Private Key rights.
 | Key | RSA ≥ 2048 | RSA ≥ 2048 or EC P-256 | RSA ≥ 2048 |
 | Subject O / OU / L / ST / C | your values, locked | locked | locked |
 | **Domain whitelist** | `aut.corp.example.com` + subdomains | host domain | `k8s.aut.corp.example.com` |
@@ -63,6 +48,21 @@ private keys out of TPP, which is why Step 2 gives no Private Key rights.
 | Validity | flexible if consumers choose `ttl`, else fixed | same | same |
 
 **Expected:** each leaf shows the values with lock icons.
+
+> **Certificate Authority (CA template).** This tells TPP which CA signs the folder's certificates. A
+> CA template is a TPP object that holds the CA server, the CA's certificate template and a login for
+> the CA. A TPP admin creates it once; folders only pick it from a list. The field may be labelled
+> *Certificate Authority*, *CA Template* or *CA* depending on the TPP version.
+> - Can't see the field, or the list is empty? Open a folder where certificates are already issued
+>   today and see which CA it uses. Use the same one, or ask whoever owns your CA connection.
+> - Write its name into A10, plus its issuer type for Vault's `issuer_hint`: Microsoft → `m`,
+>   DigiCert → `d`, Entrust → `e`.
+
+> **Why not Service Generated.** *Service Generated* means TPP creates the private key and keeps it.
+> Vault never asks for that. With `issue/`, the plugin creates the key on the Vault node. With `sign/`
+> (cert-manager), the key stays in the cluster. Either way, TPP only receives a CSR. If the folder is
+> locked to Service Generated, TPP rejects those CSRs and every request from Vault fails. It also keeps
+> private keys out of TPP, which is why Step 2 gives no Private Key rights.
 
 ## Step 4 — Negative test: a bad name is rejected
 
