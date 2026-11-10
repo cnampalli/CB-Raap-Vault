@@ -10,6 +10,9 @@
 
 ## Step 1 — Export the TPP web chain
 
+Run the ⌨ `bash` blocks in **Git Bash** or **MobaXterm** (both include `openssl`). A domain-joined
+Windows Server is the easiest place: the root CA is already in its trust store.
+
 `tpp-chain.pem` must hold **every** certificate above the TPP server certificate, **up to and
 including the root**. TPP normally sends the intermediates but **not the root**, so you add it yourself.
 
@@ -27,23 +30,48 @@ including the root**. TPP normally sends the intermediates but **not the root**,
 2. 🖱 Look at the **last** file. If its subject and issuer are the **same**, it's the root and you have
    everything: go to part 4. If they **differ**, its issuer is the missing certificate (usually the root).
 
-3. Get the missing certificate. Use whichever works first:
-   - **From your PKI team:** ask for the certificate whose subject is the issuer from part 2, as PEM.
-   - **From the AIA link** in the last certificate:
-     ```bash
-     openssl x509 -in presented-N.pem -noout -text | grep 'CA Issuers'   # N = the last file
-     curl -sS -o missing.crt '<the http:// URL shown>'
-     openssl x509 -inform DER -in missing.crt -out missing-1.pem 2>/dev/null \
-       || openssl x509 -in missing.crt -out missing-1.pem
-     openssl x509 -in missing-1.pem -noout -subject -issuer
-     ```
-     If the URL is `ldap://`, ask your PKI team instead.
-   - **From a domain-joined Windows machine:** `certlm.msc` → *Trusted Root Certification Authorities*
-     → *Certificates* → find it → **All Tasks ► Export** → **Base-64 encoded X.509 (.CER)**.
+3. Get the missing certificate. Written for a **domain-joined Windows Server** with Git Bash (or
+   MobaXterm) and Chrome. Your AD root CA is already in the server's **Trusted Root** store, so you
+   don't need the AIA link. Use **one** option:
 
-   Repeat for the certificate you got (`missing-2.pem`, …) until you have one whose subject = issuer.
+   **Option A — certutil (built into Windows), then Git Bash.** Takes about 1 minute.
+   1. ⌨ In **Command Prompt** or **PowerShell** (not Git Bash, which can mangle certutil's arguments),
+      in the `tpp-chain` folder. Use the **CN** from the issuer line in part 2:
+      ```cmd
+      certutil -store Root "CORP-Root-CA"
+      ```
+      **Expected:** one certificate block whose *Subject* matches. Note its **Cert Hash(sha1)**. If
+      several match (an old and a renewed root), pick the one whose *NotAfter* is in the future.
+   2. ⌨ Export it by that hash (remove the spaces from the hash):
+      ```cmd
+      certutil -store Root <sha1-hash> missing.cer
+      ```
+   3. ⌨ Back in **Git Bash**, in the same folder, convert it to PEM and check it:
+      ```bash
+      openssl x509 -inform DER -in missing.cer -out missing-1.pem
+      openssl x509 -in missing-1.pem -noout -subject -issuer -fingerprint -sha256
+      ```
 
-   **Expected:** the last certificate you added is self-signed (subject = issuer).
+   **Option B — Chrome**, all clicks:
+   1. 🖱 Open `https://tpp.corp.example.com` in Chrome → click the icon left of the address →
+      **Connection is secure** → **Certificate is valid**.
+   2. 🖱 **Details** tab → **Certificate Hierarchy** → click the **top** entry (the root).
+   3. 🖱 **Export…** → type **Base64-encoded ASCII, single certificate** → save as `missing-1.pem` in
+      the `tpp-chain` folder.
+   4. ⌨ Git Bash: `openssl x509 -in missing-1.pem -noout -subject -issuer -fingerprint -sha256`
+
+   **Option C — certlm.msc**, if Chrome's viewer differs: Start → `certlm.msc` → *Trusted Root
+   Certification Authorities* → *Certificates* → right-click the root → **All Tasks ► Export** →
+   **Base-64 encoded X.509 (.CER)** → save as `missing-1.pem`.
+
+   **Option D — ask your PKI team** for the root as PEM.
+
+   **Expected:** subject = issuer (it's the root) **and** subject = the issuer from part 2. Send the
+   SHA-256 fingerprint to your PKI team to confirm it's the right root, because Vault will trust it.
+
+   If there's still a gap (the certificate you got isn't self-signed), repeat with its issuer and save
+   as `missing-2.pem`. Use the **Intermediate Certification Authorities** store
+   (`certutil -store CA "<CN>"`) instead of `Root`.
 
 4. ⌨ Build the file from **everything except the server certificate**, then check it:
    ```bash
