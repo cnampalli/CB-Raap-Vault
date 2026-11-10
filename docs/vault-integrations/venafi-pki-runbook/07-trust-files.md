@@ -135,6 +135,30 @@ including the root**. TPP normally sends the intermediates but **not the root**,
 
 ## Step 2 — Export the enterprise CA certificates
 
+**Same CA as the TPP web certificate?** Often the TPP web server's certificate comes from the same
+enterprise CA that signs Vault's certificates. Then you already have these files from Step 1.
+
+⌨ Check it in Git Bash. Compare the issuer of TPP's own certificate with the issuer of the test
+certificate from chunk 06 Step 5 (open it in TPP and download it as `test.pem`):
+```bash
+openssl x509 -in tpp-chain/presented-1.pem -noout -issuer
+openssl x509 -in test.pem -noout -issuer
+```
+- **Same issuer:** reuse the Step 1 files. You don't need parts 1–2 below; go straight to part 3:
+  ```bash
+  cp tpp-chain/presented-2.pem enterprise-issuing.pem       # the CA that issued TPP's cert
+  ```
+  For `enterprise-root.pem`, copy whichever Step 1 file has subject = issuer (`missing-1.pem`, or the
+  last `presented-*.pem`). If you used part 3b, split `tpp-chain.pem` instead: the first block is the
+  issuing CA, the last is the root.
+- **Different issuer, same root:** reuse only the root as `enterprise-root.pem`; get the issuing CA
+  with parts 1–2.
+- **Different root:** do parts 1–3 as written.
+
+Still hand over **both** sets of files. They do different jobs: `tpp-chain.pem` lets Vault trust
+TPP's web server, and `enterprise-*.pem` checks the certificates Vault issues. If TPP's web certificate
+later moves to another CA, only `tpp-chain.pem` changes.
+
 1. 🖱 Get the root and issuing CA certificates of the CA in A10 from your PKI team's published location
    (or the CA console → CA certificate → export as Base-64 / PEM).
 2. 🖱 Save as `enterprise-root.pem` and `enterprise-issuing.pem`.
