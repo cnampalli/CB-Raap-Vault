@@ -92,28 +92,61 @@ validity, or what Vault asks for if chunk 05a Step 3 was done.
 > *Allow wildcard Common and Subject Alternative Name* (= Allow Wildcards), *Renew automatically*
 > (leave empty = no automatic renewal), *SAN Types Allowed* (set **DNS** only).
 
+## Steps 4–5 — Test the folder the way Vault uses it
+
+Vault sends TPP a **CSR** through the API, as `svc-vault-pki`. TPP checks *Allowed Domains* against
+that CSR. Test it the same way. Don't test by creating a certificate in the UI without a CSR: TPP can
+save that object and only flag an *Invalid Domain Name* risk later, so it proves nothing.
+
+⌨ Get a token as `svc-vault-pki`: run chunk 05 Step 3, parts 1–3 **only**. Keep `TOKEN` and skip
+part 4, which revokes it. Then:
+```bash
+FOLDER='\VED\Policy\Certificates\Vault\AUT\Web'
+request() {   # $1 = common name
+  openssl req -new -newkey rsa:2048 -nodes -keyout /dev/null -subj "/CN=$1" 2>/dev/null > "$1.csr"
+  jq -n --arg dn "$FOLDER" --arg csr "$(cat "$1.csr")" --arg name "$1" \
+     '{PolicyDN:$dn, PKCS10:$csr, ObjectName:$name}' \
+  | curl -sS -X POST "$TPP_URL/vedsdk/certificates/request" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d @-
+  echo
+}
+```
+
 ## Step 4 — Negative test: a bad name is rejected
 
-1. 🖱 In `Web` → **Add** ► **Certificate** → Common Name `evil.example.com` → **Save** / **Submit**.
+⌨ `request evil.example.com`
 
-**Expected:** TPP **rejects** it with a policy / domain error. Screenshot it (evidence E10).
+**Expected:** an **error** (HTTP 400) that mentions the domain or policy, and **no** `CertificateDN` in
+the reply. Save the output (evidence E10).
+
+If you get a `CertificateDN` back, TPP accepted it. Delete that certificate in the UI, then go through
+the *If it fails* rows for this step.
 
 ## Step 5 — Positive test: time the CA
 
-1. 🖱 In `Web` → **Add** ► **Certificate** → Common Name `test-<date>.aut.corp.example.com` → submit.
-   Start a timer.
-2. 🖱 Wait until its status is **Issued**. Stop the timer.
-3. 🖱 Open the certificate → details. Check the issuer is your CA (A10), the CN is also a SAN, and note the
-   **CRL distribution point** and **OCSP** URL.
-4. 🖱 Revoke and delete this test certificate.
+1. ⌨ `request test-$(date +%Y%m%d).aut.corp.example.com`
 
-**Expected:** issued in **under 60 s**, CN present as a DNS SAN, CRL/OCSP URLs present.
+   **Expected:** a reply with `CertificateDN`. Start a timer.
+2. ⌨ Ask for the certificate until it's issued:
+   ```bash
+   DN='<CertificateDN from part 1>'
+   jq -n --arg dn "$DN" '{CertificateDN:$dn, Format:"Base64"}' \
+   | curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$TPP_URL/vedsdk/certificates/retrieve" \
+       -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d @-
+   ```
+   `202` = still pending. Repeat. `200` = issued. Stop the timer.
+3. 🖱 In TPP, open the certificate (under `Web`). Check the issuer is your CA (A10) and the CN is also a
+   DNS SAN. Note the **CRL distribution point** and **OCSP** URL.
+4. 🖱 Revoke and delete the test certificate. ⌨ Throw the token away (chunk 05 Step 3, part 4) and
+   `rm -f *.csr`.
+
+**Expected:** `200` in **under 60 s**, CN present as a DNS SAN, CRL/OCSP URLs present.
 
 ## Done when
 
 - [ ] Folders exist; `svc-vault-pki` has rights on `AUT` only
 - [ ] Certificate tab set and locked on all three leaves
-- [ ] `evil.example.com` rejected (screenshot)
+- [ ] `evil.example.com` rejected through the API (output saved)
 - [ ] Test certificate issued; turnaround time sent to the Vault team (they raise `server_timeout` if it
       is over 120 s)
 
@@ -124,7 +157,9 @@ validity, or what Vault asks for if chunk 05a Step 3 was done.
 | Can't add `svc-vault-pki` to Permissions | Signed in as local admin for an AD account. Use your AD admin (chunk 02) |
 | CA Template list is empty | No CA template yet. Do chunk 05a |
 | Can't change a field (greyed out) | Locked on a parent folder. Change it there, or ask its owner |
-| `evil.example.com` was issued | Allowed Domains empty or not locked on that folder. Fix Step 3, revoke the cert |
+| Step 4 accepted `evil.example.com` | Check in this order: **(1)** *Allowed Domains* on **`Web` itself** is filled in **and locked**. **(2)** The entry isn't too broad: `example.com` or `.example.com` allows `evil.example.com`; use `aut.corp.example.com`. **(3)** No parent folder (`AUT`, `Vault`, `Certificates`) has *Allowed Domains* **locked** blank or broad; a locked parent value wins. **(4)** `FOLDER` in the test really is `…\AUT\Web`. Fix, delete the accepted cert, re-run Step 4 |
+| Step 4/5: `401` | Token expired or revoked. Get a new one (chunk 05 Step 3, parts 1–3) |
+| Step 4/5: error about CSR / PKCS#10 not allowed | *CSR Generation* is Service Generated or locked so on a parent. Set **User Provided CSR** (Step 3) |
 | Test cert stuck at *pending* / CSR stage error | CA template settings. See chunk 05a *If it fails* |
 | Issuance takes minutes | Raise with the CA team. Vault waits 180 s at most |
 
