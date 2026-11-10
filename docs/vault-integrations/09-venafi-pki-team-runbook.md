@@ -11,6 +11,7 @@ The runbook is now an instructions manual split into independent chunks, one fil
 | P1 | [03](venafi-pki-runbook/03-tpp-platform-check.md) |
 | P2 | [04](venafi-pki-runbook/04-tpp-service-account.md) |
 | P3 | [05](venafi-pki-runbook/05-tpp-api-integration.md) |
+| — (new: CA template) | [05a](venafi-pki-runbook/05a-tpp-ca-template.md) |
 | P4–P7 | [06](venafi-pki-runbook/06-tpp-folders-policy.md) |
 | P8 | [07](venafi-pki-runbook/07-trust-files.md) |
 | V1–V4 | [08](venafi-pki-runbook/08-vault-nodes.md) |

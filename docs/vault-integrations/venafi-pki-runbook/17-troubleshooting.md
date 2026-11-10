@@ -14,6 +14,10 @@ Find your symptom, then go to the chunk shown.
 | Vault | `checksums did not match` after failover | One node has a different binary | 08 Step 2 |
 | Vault | Mount fails `unknown plugin` | Root pipeline not run, or version text differs | 10 Step 1 |
 | Vault | Issue fails `PolicyLocked` / `does not match policy` | Role key or subject vs the folder's locked policy | 06 Step 3, guide 08 §8 |
+| Venafi | CA Template list empty on the folder | No CA template yet | 05a |
+| Vault | `SubjectAltName not supported by Application and CA` | CA template: Subject Alt Name Enabled unticked | 05a Step 4 |
+| Vault | Issue times out, TPP shows *pending* | Manual approval on the CA template or MS template | 05a |
+| Vault | `ttl` ignored | CA does not allow requester end date | 05a Step 3 |
 | Vault | Issue works, cert has no SANs | `alt_names` not sent | 12 Step 2 |
 | Vault | Everything fails after months with 401 | Grant expired (`refresh_until`) | 11 (repeat) |
 | K8s | ClusterIssuer `invalid audience` | Vault role audience ≠ `vault://<name>` | 13 Step 4 |

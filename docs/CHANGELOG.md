@@ -19,6 +19,10 @@ command (⌨) steps, an **Expected** result per step, *Done when* and *If it fai
   to permissions or API integrations, and AD accounts never appear in the TPP Users list. The chunk
   covers checking the AD connector and Search Roots in VCC, creating an AD admin group, making it a
   Master Admin, and signing in as AD.
+- **Chunk 05a — CA template.** Microsoft CA certificate template (subject supplied in the request), CA
+  and template rights for TPP's CA account, optional requester end date, and the TPP Microsoft CA template
+  object field by field. Chunk 06 now lists every field of the folder **Settings ► Certificate** tab
+  (Venafi TPP 25.1 labels), with value, lock and reason.
 - AD (ADUC) and local options for the service account (chunk 04), a login test for the service
   account (chunk 05), and Aperture click-paths for folders, permissions, policy locks and the
   negative/positive tests (chunk 06).

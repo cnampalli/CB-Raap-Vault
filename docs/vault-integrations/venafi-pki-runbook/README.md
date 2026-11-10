@@ -24,7 +24,8 @@ connect Kubernetes through cert-manager, and prove Venafi governs the certificat
 | 03 | [Check the TPP platform](03-tpp-platform-check.md) | Venafi | — | TPP URL, version |
 | 04 | [Service account](04-tpp-service-account.md) | Venafi (+ AD) | 02 if AD | `svc-vault-pki` |
 | 05 | [API integration](05-tpp-api-integration.md) | Venafi | 04 | Client ID, scope, validity |
-| 06 | [Folders and policy](06-tpp-folders-policy.md) | Venafi | 04 | Policy folders, CA turnaround |
+| 05a | [CA template](05a-tpp-ca-template.md) | CA admin + Venafi | — | A10: the CA template TPP issues through |
+| 06 | [Folders and policy](06-tpp-folders-policy.md) | Venafi | 04, 05a | Policy folders, CA turnaround |
 | 07 | [Trust files](07-trust-files.md) | Venafi | — | `tpp-chain.pem`, `enterprise-root.pem` |
 | 08 | [Vault nodes](08-vault-nodes.md) | Vault | 07 | Verified binary + trust bundle on every node |
 | 09 | [Firewall](09-firewall.md) | Vault (raises) | — | Flows #11–#14 open |
@@ -40,9 +41,9 @@ connect Kubernetes through cert-manager, and prove Venafi governs the certificat
 ## Order
 
 ```
-Venafi:  01 → 02 → 03 → 04 → 05 → 06 → 07 ─┐
-Vault:   01 → 08 → 09 → 10 ────────────────┼─► 11 → 12 → 15 → 16
-K8s:                                       └─► 13 (after 11) ──┘
+Venafi:  01 → 02 → 03 → 04 → 05 → 05a → 06 → 07 ─┐
+Vault:   01 → 08 → 09 → 10 ──────────────────────┼─► 11 → 12 → 15 → 16
+K8s:                                             └─► 13 (after 11) ──┘
 ```
 
 Venafi and Vault work in parallel until chunk 11, which needs both teams at the same time.

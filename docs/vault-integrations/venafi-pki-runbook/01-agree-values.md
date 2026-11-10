@@ -25,7 +25,7 @@ them with yours.
 | A7 | Parent folder | `\VED\Policy\Certificates\Vault\AUT` | Venafi | |
 | A8 | Leaf folder → Vault role | `Web`→`web-aut`, `Hosts`→`host-csr-aut`, `K8s`→`k8s-cert-manager` | Venafi + Vault | |
 | A9 | Allowed domains per folder | `aut.corp.example.com`, `k8s.aut.corp.example.com` | Venafi + app owners | |
-| A10 | CA template + issuer type | Microsoft CA → `m` | Venafi | |
+| A10 | CA template name + issuer type (chunk 05a) | `Vault-AUT-MSCA`, Microsoft → `m` | Venafi + CA admin | |
 | A11 | Vault VIP, namespace | `https://vault-vip.corp.example.com:8200`, `AUT` | Vault | |
 | A12 | Vault nodes | `vault-01/02/03.corp.example.com` | Vault | |
 | A13 | Mount path | `venafi-pki` | Vault | |
