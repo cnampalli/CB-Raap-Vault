@@ -71,9 +71,51 @@ including the root**. TPP normally sends the intermediates but **not the root**,
 
    If there's still a gap (the certificate you got isn't self-signed), repeat with its issuer and save
    as `missing-2.pem`. Use the **Intermediate Certification Authorities** store
-   (`certutil -store CA "<CN>"`) instead of `Root`.
+   (`certutil -store CA "<CN>"`) instead of `Root`. If **more than one** certificate is missing, use
+   part 3b instead.
 
-4. ⌨ Build the file from **everything except the server certificate**, then check it:
+3b. **Several certificates missing (more than one intermediate):** let Windows build the whole chain.
+   Windows looks in the server's certificate stores **and** follows the AIA links, including
+   `ldap://` ones, using the server's domain login. It writes `tpp-chain.pem` for you, so skip part 4's
+   `cat` line.
+
+   ⌨ In **PowerShell**, in the `tpp-chain` folder (part 1 must have run):
+   ```powershell
+   $X = 'System.Security.Cryptography.X509Certificates'
+   $files = Get-ChildItem presented-*.pem | Sort-Object { [int]($_.BaseName -replace '\D') }
+   $leaf  = New-Object "$X.X509Certificate2" $files[0].FullName
+   $chain = New-Object "$X.X509Chain"
+   $chain.ChainPolicy.RevocationMode = 'NoCheck'
+   $files | Select-Object -Skip 1 | ForEach-Object {
+     [void]$chain.ChainPolicy.ExtraStore.Add((New-Object "$X.X509Certificate2" $_.FullName)) }
+   "Chain complete: $($chain.Build($leaf))"
+   $chain.ChainStatus | ForEach-Object { $_.StatusInformation }
+   $pems = foreach ($e in ($chain.ChainElements | Select-Object -Skip 1)) {
+     $c = $e.Certificate
+     Write-Host "$($c.Subject)   <- issued by $($c.Issuer)"
+     $b64 = [Convert]::ToBase64String($c.RawData) -replace '(.{64})', "`$1`n"
+     "-----BEGIN CERTIFICATE-----`n$($b64.TrimEnd())`n-----END CERTIFICATE-----"
+   }
+   [IO.File]::WriteAllText((Join-Path (Split-Path $PWD) 'tpp-chain.pem'), ($pems -join "`n") + "`n")
+   ```
+   **Expected:**
+   - `Chain complete: True`, and no status lines.
+   - One line per certificate above the server certificate. The **last** line's subject = its issuer
+     (the root).
+   - `tpp-chain.pem` written next to the `tpp-chain` folder.
+
+   | You see | Meaning | Fix |
+   |---|---|---|
+   | `Chain complete: False` + *partial chain* | Windows couldn't find a certificate in its stores or through AIA | Ask the PKI team for the issuer of the **last** line printed. Save it as `missing-1.pem` in `tpp-chain`, run `certutil -addstore -user CA missing-1.pem` (or `Root` if it's the root), and re-run |
+   | `Chain complete: False` + *not trusted* / *untrusted root* | Chain is complete, but this server doesn't trust the root | The file is still written. Confirm the root's fingerprint with the PKI team before using it |
+   | Lines print but the last one isn't self-signed | Same as *partial chain* | As above |
+
+   Manual alternative: in Chrome, the **Certificate Hierarchy** (Option B) shows the full chain
+   Windows built. Select **each** entry except the bottom one, **Export** each as Base64, and put them
+   all in `missing-*.pem`.
+
+4. ⌨ Build the file from **everything except the server certificate**, then check it. After part 3b,
+   skip the `cat` line and just run `cd ..` and the checks:
    ```bash
    cat $(ls presented-*.pem | grep -v '^presented-1.pem$') missing-*.pem 2>/dev/null > ../tpp-chain.pem
    cd ..
