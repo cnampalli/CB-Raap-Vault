@@ -25,6 +25,7 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+$scriptStart = Get-Date   # CAPI2 events after this are from this script, not from a login
 $report = Join-Path (Get-Location) ("pkipn-report-{0}-{1}.txt" -f $env:COMPUTERNAME, (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $X = 'System.Security.Cryptography.X509Certificates'
 function Out-R([string]$t) { Write-Host $t; Add-Content -Path $report -Value $t }
@@ -84,9 +85,16 @@ foreach ($e in $chain.ChainElements) {
 }
 if ($ok) { Res 'OK' 'Chain builds to a trusted root and revocation checks passed' }
 else {
-  $chain.ChainStatus | ForEach-Object { Res 'FAIL' ("{0}: {1}" -f $_.Status, $_.StatusInformation.Trim()) }
+  $revOnly = $true
+  foreach ($cs in $chain.ChainStatus) {
+    if ("$($cs.Status)" -in 'RevocationStatusUnknown', 'OfflineRevocation') { Res 'WARN' ("{0}: {1}" -f $cs.Status, $cs.StatusInformation.Trim()) }
+    else { $revOnly = $false; Res 'FAIL' ("{0}: {1}" -f $cs.Status, $cs.StatusInformation.Trim()) }
+  }
   Out-R '  UntrustedRoot -> root not in LocalMachine\Root | PartialChain -> intermediate missing'
-  Out-R '  RevocationStatusUnknown/OfflineRevocation -> CRL/OCSP unreachable from this server (proxy/firewall)'
+  Out-R '  RevocationStatusUnknown/OfflineRevocation -> CRL/OCSP unreachable (proxy/firewall). NOTE: this check runs as'
+  Out-R ("  {0}, with your user's proxy and URL cache. IIS checks as SYSTEM via the netsh winhttp proxy." -f [Security.Principal.WindowsIdentity]::GetCurrent().Name)
+  Out-R '  If chunk 02 Step 3 (certutil -verify -urlfetch as SYSTEM) passes, these WARN lines do not affect the login.'
+  if ($revOnly) { Res 'OK' 'Chain itself builds to a trusted root (only revocation differs, see above)' }
 }
 $last = if ($chain.ChainElements.Count -gt 0) { $chain.ChainElements[$chain.ChainElements.Count - 1].Certificate } else { $null }
 if ($last -and $last.Subject -eq $last.Issuer) {
@@ -103,7 +111,24 @@ foreach ($oid in '2.5.29.31', '1.3.6.1.5.5.7.1.1') {
 
 Head 'STAGE 3 - LocalMachine\Root hygiene (non-self-signed certs here break client auth -> 403.16)'
 $bad = Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Subject -ne $_.Issuer }
-if ($bad) { $bad | ForEach-Object { Res 'FAIL' ("Not self-signed, move to Intermediate CAs: {0} [{1}]" -f $_.Subject, $_.Thumbprint) } }
+if ($bad) {
+  $phys = [ordered]@{
+    'LocalMachine (certlm.msc, removable here)'  = 'HKLM:\SOFTWARE\Microsoft\SystemCertificates\ROOT\Certificates'
+    'GroupPolicy (a GPO pushes it back)'          = 'HKLM:\SOFTWARE\Policies\Microsoft\SystemCertificates\Root\Certificates'
+    'Enterprise (published in AD, comes back)'     = 'HKLM:\SOFTWARE\Microsoft\EnterpriseCertificates\Root\Certificates'
+  }
+  foreach ($b in $bad) {
+    Res 'FAIL' ("Not self-signed, move to Intermediate CAs: {0} [{1}]" -f $b.Subject, $b.Thumbprint)
+    Out-R ("       issuer: {0}" -f $b.Issuer)
+    $where = @($phys.Keys | Where-Object { Test-Path (Join-Path $phys[$_] $b.Thumbprint) })
+    Out-R ("       stored in: {0}" -f $(if ($where) { $where -join '; ' } else { 'unknown physical store' }))
+    $inCA = Get-ChildItem Cert:\LocalMachine\CA | Where-Object { $_.Thumbprint -eq $b.Thumbprint }
+    Out-R ("       also in Intermediate CAs: {0}" -f $(if ($inCA) { 'yes' } else { 'no (import it there before removing from Root)' }))
+    $parent = Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Subject -eq $b.Issuer -and $_.Subject -eq $_.Issuer }
+    Out-R ("       its own root in Root: {0}" -f $(if ($parent) { "yes [$($parent[0].Thumbprint)]" } else { 'NO - add that root first, or chains through this CA (e.g. the PVWA web cert) break' }))
+  }
+  Out-R '  Fix: 07-troubleshooting.md, "403.16 + 2148204809", cause (3). Reboot afterwards.'
+}
 else { Res 'OK' 'Only self-signed certificates in LocalMachine\Root' }
 
 Head 'STAGE 3 - Schannel client-auth trust mode and Client Authentication Issuers store (403.16 0x800B0109)'
@@ -124,13 +149,25 @@ Head 'STAGE 3 - Machine proxy used for CRL/OCSP downloads'
 
 # ---------------------------------------------------------------- IIS
 Head 'STAGE 2 - HTTPS bindings (netsh http show sslcert)'
-(netsh http show sslcert) | ForEach-Object { Out-R $_ }
+$ssl = @(netsh http show sslcert)
+$ssl | ForEach-Object { Out-R $_ }
+$cur = $null
+foreach ($l in $ssl) {
+  if ($l -match '^\s*(IP:port|Hostname:port)\s*:\s*(\S+)') { $cur = $Matches[2] }
+  elseif ($cur -match ':443$' -and $l -match 'Verify Client Certificate Revocation\s*:\s*Disabled') {
+    Res 'WARN' "$cur : Verify Client Certificate Revocation is Disabled. Fine for a test, turn it back on afterwards (chunk 03 Step 1)"
+  }
+  elseif ($cur -match ':443$' -and $l -match 'Ctl Store Name\s*:\s*(?!\(null\))(\S+)') {
+    Res 'WARN' "$cur : CTL store '$($Matches[1])' set - IIS accepts only issuers in it (403.16)"
+  }
+}
 Out-R 'Check: Verify Client Certificate Revocation=Enabled; CTL Store Name empty or includes the external CA;'
 Out-R '       Negotiate Client Certificate=Enabled if TLS 1.3 is on.'
 
 Head 'STAGE 2 - TLS 1.3 server state'
 $t13 = 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Server'
 if (Test-Path $t13) { Get-ItemProperty $t13 | Select-Object Enabled, DisabledByDefault | Format-List | Out-String | ForEach-Object { Out-R $_ } }
+elseif ([Environment]::OSVersion.Version.Build -lt 20348) { Out-R 'Windows Server 2019 or earlier: no TLS 1.3 server support. Chunk 03 Step 3 does not apply.' }
 else { Out-R 'No explicit TLS 1.3 server key: OS default (on by default on Windows Server 2022+)' }
 
 Head 'STAGE 2 - IIS client-certificate setting (sslFlags) per PVWA path'
@@ -161,7 +198,7 @@ else { Res 'FAIL' "No *PKI*.dll under $PvwaRoot" }
 $cad = Join-Path $PvwaRoot 'CustomAuthenticationDlls'
 if (Test-Path $cad) { Res 'OK' "CustomAuthenticationDlls exists" } else { Res 'INFO' "No CustomAuthenticationDlls folder (needed if your 14.6 doc page says so)" }
 
-Head 'STAGE 4b - PKI-related lines in web.config (Bin is the one PVWA uses; Env shown for comparison)'
+Head 'STAGE 4b - PKI-related lines in web.config (PasswordVault\web.config is the one IIS loads; Bin/Env shown if present)'
 foreach ($w in (Join-Path $PvwaRoot 'Bin\web.config'), (Join-Path $PvwaRoot 'Env\web.config'), (Join-Path $PvwaRoot 'web.config')) {
   if (Test-Path $w) {
     Out-R "--- $w"
@@ -179,12 +216,33 @@ if ($lf) {
   Out-R 'Read sc-status sc-substatus: 403 7=no cert sent, 16=untrusted, 13=revoked/CRL unreachable, 17=expired, 12=mapping'
 } else { Res 'INFO' "No IIS logs under $logDir" }
 
-Head 'LOGS - CAPI2 (certificate chain/revocation events)'
+Head 'LOGS - CAPI2 chain events from logins (lsass = IIS/Schannel client auth), before this script ran'
 $capi = Get-WinEvent -ListLog 'Microsoft-Windows-CAPI2/Operational' -ErrorAction SilentlyContinue
 if ($capi -and $capi.IsEnabled) {
-  Get-WinEvent -LogName 'Microsoft-Windows-CAPI2/Operational' -MaxEvents 300 -ErrorAction SilentlyContinue |
-    Where-Object { $_.LevelDisplayName -eq 'Error' } | Select-Object -First 10 |
-    ForEach-Object { Out-R ("  {0} id={1} {2}" -f $_.TimeCreated, $_.Id, ($_.Message -split "`n")[0]) }
+  $rows = foreach ($ev in (Get-WinEvent -LogName 'Microsoft-Windows-CAPI2/Operational' -MaxEvents 5000 -ErrorAction SilentlyContinue |
+                           Where-Object { $_.Id -in 11, 30 -and $_.TimeCreated -lt $scriptStart })) {
+    try { $x = [xml]$ev.ToXml() } catch { continue }
+    $aux = $x.SelectSingleNode("//*[local-name()='EventAuxInfo']")
+    $proc = if ($aux) { $aux.GetAttribute('ProcessName') } else { '' }
+    $resN = $x.SelectSingleNode("//*[local-name()='Result']")
+    $res = if ($resN) { $resN.GetAttribute('value') } else { '' }
+    $err = @($x.SelectNodes("//*[local-name()='ErrorStatus']") | ForEach-Object { $_.GetAttribute('value') } | Where-Object { $_ -and $_ -ne '0' } | Select-Object -Unique)
+    $c1 = $x.SelectSingleNode("//*[local-name()='Certificate'][@subjectName]")
+    [pscustomobject]@{ Time = $ev.TimeCreated; Id = $ev.Id; Proc = $proc; Result = $res; Errors = ($err -join ',')
+      Subject = $(if ($c1) { $c1.GetAttribute('subjectName') } else { '' })
+      Thumb = $(if ($c1) { ($c1.GetAttribute('fileRef') -replace '\.cer$', '').ToUpper() } else { '' }) }
+  }
+  $login = @($rows | Where-Object { $_.Proc -match 'lsass' } | Select-Object -First 12)
+  if (-not $login) { Res 'INFO' 'No lsass chain events yet. CAPI2 must be enabled BEFORE the login attempt: retry the login, then re-run.' }
+  foreach ($r in $login) {
+    $state = if (($r.Result -and $r.Result -ne '0') -or $r.Errors) { 'FAIL' } else { 'OK' }
+    Res $state ("{0} id={1} result={2} errorStatus={3} cert={4} [{5}]" -f $r.Time, $r.Id, $r.Result, $r.Errors, $r.Subject, $r.Thumb)
+  }
+  $sent = @($login | Where-Object { $_.Thumb } | ForEach-Object { $_.Thumb } | Select-Object -Unique)
+  if ($sent -and ($sent -notcontains $cert.Thumbprint.ToUpper())) {
+    Res 'WARN' "The certificate(s) IIS checked differ from -UserCert ($($cert.Thumbprint)). Export the one the browser sent and re-run with it."
+  } elseif ($sent) { Res 'OK' 'IIS checked the same certificate as -UserCert' }
+  Out-R '  result/errorStatus 800B0109 = untrusted root, 80092013 = revocation offline, 800B0101 = expired, 0 = OK'
 } else { Res 'INFO' 'CAPI2 log disabled. Enable: wevtutil sl Microsoft-Windows-CAPI2/Operational /e:true  then retry the login and re-run' }
 
 Head 'LOGS - Schannel errors (last 24 h)'

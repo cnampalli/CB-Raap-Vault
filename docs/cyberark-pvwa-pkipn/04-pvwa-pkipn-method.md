@@ -11,10 +11,12 @@
 
 ## Step 1 — Back up
 
-🖱 Copy `…\wwwroot\PasswordVault\Bin\web.config` (default
-`C:\inetpub\wwwroot\PasswordVault\Bin\web.config`) to `web.config.bak-<date>`.
+🖱 Copy `…\wwwroot\PasswordVault\web.config` (default
+`C:\inetpub\wwwroot\PasswordVault\web.config`) to `web.config.bak-<date>`.
 
-Edit the web.config in **`PasswordVault\Bin`**, **not** `PasswordVault\Env`.
+Edit **`PasswordVault\web.config`**, the application's own file that IIS loads. Some installs also
+have copies under `Bin` or `Env`; IIS doesn't read those. The diagnostic script (chunk 07) lists
+which exist and their PKI lines.
 
 ## Step 2 — Put the PKIPN module in place (each PVWA server)
 
@@ -23,7 +25,7 @@ Edit the web.config in **`PasswordVault\Bin`**, **not** `PasswordVault\Env`.
    `PasswordVault\CustomAuthenticationDlls`.
    📋 Check the DLL name against the 14.6 page. Some versions ship `CyberArk.Authentication.PKIPN.dll`
    in the installation package instead.
-3. 🖱 Add the PKIPN entry to `PasswordVault\Bin\web.config`. 📋 **Copy from the 14.6 page.**
+3. 🖱 Add the PKIPN entry to `PasswordVault\web.config`. 📋 **Copy from the 14.6 page.**
 4. ⌨ `iisreset`
 
 **Expected:** the DLL is in `CustomAuthenticationDlls`, and the PVWA still loads after `iisreset`.
@@ -58,7 +60,7 @@ certificates, or lack a suitable key usage / EKU. Chunk 01 already checked these
 Without this, **any** CA that the PVWA server trusts can issue a certificate that logs someone in,
 including the internal CA and every public root in Windows. Limit it to the external CA:
 
-- 🖱 In `PasswordVault\Bin\web.config` → `<appSettings>` → add the issuer value from the 14.6 page
+- 🖱 In `PasswordVault\web.config` → `<appSettings>` → add the issuer value from the 14.6 page
   section **"Validate the certificate issuer for PKI and PKIPN authentication"**. 📋 Copy the key name
   from that page. The value is the issuing CA's name, taken from `user.cer`'s **Issuer** (chunk 01).
 - ⌨ `iisreset`
