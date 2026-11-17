@@ -6,7 +6,7 @@
 > get the same certificates through **cert-manager** (or the Vault Agent Injector webhook).
 >
 > **This is the "how it works and why" reference. To _do_ the integration, follow the step-by-step,
-> team-by-team runbook: [`09-venafi-pki-team-runbook.md`](09-venafi-pki-team-runbook.md).**
+> instructions manual: [`venafi-pki-runbook/`](venafi-pki-runbook/README.md).**
 >
 > **Pinned versions**
 >
@@ -83,14 +83,14 @@ not from marketing pages):
 | **`key_type: any`** | Valid for `sign/` only; `issue/` with `any` is refused ("only signing") |
 | **Tokens: first write** | Writing the Venafi secret makes the **active node call TPP immediately** and spend the first refresh token. A successful write therefore already proves flow #11, the trust bundle, `client_id` and scope |
 | **Tokens: refresh** | Lazy: on an `issue/`/`sign/` call after `next_refresh`. Only the **active node** refreshes (performance standbys forward). `refresh_interval` is **clamped** to (access-token lifetime − 30 s); it is not rejected |
-| **Tokens: grant expiry** | The TPP grant has a fixed `refresh_until`. After it, refresh fails and **all issuance stops** until the secret is re-bootstrapped with new `vcert getcred` tokens. Calendar it (runbook V14/P11) |
+| **Tokens: grant expiry** | The TPP grant has a fixed `refresh_until`. After it, refresh fails and **all issuance stops** until the secret is re-bootstrapped with new `vcert getcred` tokens. Calendar it (runbook chunks 11 and 16) |
 | **Endpoints** | `venafi/<name>`, `roles/<name>`, `issue/<role>`, `sign/<role>`, `revoke/<role>`, `cert/<id>`, `certs/` |
 
 ---
 
 ## 3. Prerequisites
 
-### 3.1 TPP side (owner: Venafi / PKI team — runbook P1–P8)
+### 3.1 TPP side (owner: Venafi / PKI team — runbook chunks 02–07)
 
 | # | Item | Detail |
 |---|---|---|
@@ -128,7 +128,7 @@ Ansible play with `-e tpp_host=…`). #12 and #13 have targets in `docs/shared/t
 ## 4. The plugin binary (placed by Ansible)
 
 Ansible has dropped `venafi-pki-backend` on the nodes. **Prove it, node by node, before registering**
-(runbook V2) — a wrong hash on a standby only surfaces after a failover, as `checksums did not match`.
+(runbook chunk 08) — a wrong hash on a standby only surfaces after a failover, as `checksums did not match`.
 
 ```bash
 ansible-playbook -i inventory docs/vault-integrations/examples/ansible/venafi-pki-verify.yml -e tpp_host=tpp.corp.example.com
@@ -217,7 +217,7 @@ refresh, would sit in clear text in state, and the next apply would overwrite th
 
 **Who writes it:** the **Venafi team**, through a write-only, response-wrapped, 30-minute token that the
 Vault team issues — so TPP tokens never pass through the Vault team, and the bootstrap token cannot read
-the secret back (runbook V8 → P9 → V9):
+the secret back (runbook chunk 11):
 
 ```bash
 # Vault team
@@ -446,7 +446,7 @@ TPP custom fields, where the folder requires them: `custom_fields="AppOwner=auto
 
 ## 14. Verification
 
-Use the evidence pack in [runbook 09 §5](09-venafi-pki-team-runbook.md#5-proof-of-integration--the-evidence-pack).
+Use the evidence pack in [runbook chunk 15](venafi-pki-runbook/15-proof.md).
 In short: `tools/venafi_pki_proof.py` (issue mode from a consumer token, and `--cert-file` mode on a
 cert-manager secret) plus the failover, renewal, revoke and grant-refresh checks listed there.
 

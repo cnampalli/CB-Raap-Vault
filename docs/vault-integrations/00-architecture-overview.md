@@ -219,7 +219,7 @@ not by additional namespaces (per the agreed operating model).
 | `05-operations-appendix.md` | Firewall validation, TTL/SLA table, rotation & DR, troubleshooting, open follow-ups |
 | `06-static-key-jwt-module-uplift.md` | How to uplift Prescient's `vault-enterprise-terraform` `vault-auth-jwt` module to validate a JWT by **static public key** (`jwt_validation_pubkeys`) so CDRO's discovery-less ZeroTrust JWT works — full module files, schema/validator/config diffs, apply/verify/rollback |
 | `08-venafi-pki-secrets-engine.md` | **Reference:** Venafi TPP-backed TLS issuance through `venafi-pki-backend` v0.16.0 on Vault 1.20.8+ent — how it works (verified from source), prerequisites, catalog/mount/roles, the Venafi-secret bootstrap, policies and their limits, Kubernetes consumers, ops, troubleshooting |
-| `09-venafi-pki-team-runbook.md` | **Runbook:** step-by-step for the Venafi team (P1–P11), Vault team (V1–V14) and Kubernetes team (K1–K8, cert-manager or Agent Injector), plus the evidence pack E1–E14 that proves Venafi governs Vault's certificates |
+| `venafi-pki-runbook/` | **Runbook (instructions manual):** 17 independent chunks with manual steps and expected results: AD admin access to TPP, service account, API integration, folders and policy, trust files, Vault nodes, firewall, plugin and mount, connecting Vault to TPP, consumers, Kubernetes (cert-manager or Agent Injector), proof E1–E14, day 2, troubleshooting. `09-venafi-pki-team-runbook.md` maps old step IDs to chunks |
 
 > **Beginner step-by-step version:** a task-oriented, copy-paste guide series lives in
 > [`../getting-started/`](../getting-started/) (README + 00–05). Use it to *do* the integration; use this
