@@ -54,6 +54,13 @@ Pick **one**:
 
 ⌨ `iisreset` afterwards.
 
+## If it fails
+
+| You see | Cause | Fix |
+|---|---|---|
+| IIS Manager, opening **SSL Settings**: `Only one <configSections> element allowed. It must be the first child element of the root <configuration> element` (file `PasswordVault\web.config`) | Something was pasted **above** `<configSections>`, or a second `<configSections>` was added. Often a `<system.net><defaultProxy>` proxy stanza. PVWA itself probably shows **500.19** too | Back up the file. Make `<configSections>` the first child of `<configuration>`, with only one block. Move or delete the pasted stanza. A web.config proxy is **not** needed: revocation uses the `netsh winhttp` proxy (chunk 02). Check with ⌨ `[xml](Get-Content <path>\web.config -Raw)`, then `iisreset` |
+| Every PVWA page asks for a certificate | *Require* set on the site or `PasswordVault`, not only the PKI folder | Set those back to **Ignore** (Step 2) |
+
 ## Done when
 
 - [ ] Client certificates *Require* on the PKI folder only, on every PVWA server
