@@ -106,6 +106,19 @@ $bad = Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Subject -ne $_.
 if ($bad) { $bad | ForEach-Object { Res 'FAIL' ("Not self-signed, move to Intermediate CAs: {0} [{1}]" -f $_.Subject, $_.Thumbprint) } }
 else { Res 'OK' 'Only self-signed certificates in LocalMachine\Root' }
 
+Head 'STAGE 3 - Schannel client-auth trust mode and Client Authentication Issuers store (403.16 0x800B0109)'
+$sch = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL' -ErrorAction SilentlyContinue
+$mode = if ($sch -and $null -ne $sch.ClientAuthTrustMode) { $sch.ClientAuthTrustMode } else { 0 }
+Out-R ("ClientAuthTrustMode = {0}  (0 = machine trust/default, 1 = exclusive root trust, 2 = exclusive CA trust)" -f $mode)
+$cai = @(Get-ChildItem Cert:\LocalMachine\ClientAuthIssuer -ErrorAction SilentlyContinue)
+Out-R ("Client Authentication Issuers store: {0} certificate(s)" -f $cai.Count)
+$cai | ForEach-Object { Out-R ("  {0} [{1}]" -f $_.Subject, $_.Thumbprint) }
+if ($mode -ne 0 -and $chain.ChainElements.Count -gt 1) {
+  $need = if ($mode -eq 1) { $last } else { $chain.ChainElements[1].Certificate }
+  if ($need -and ($cai | Where-Object { $_.Thumbprint -eq $need.Thumbprint })) { Res 'OK' "Required issuer is in ClientAuthIssuer: $($need.Subject)" }
+  elseif ($need) { Res 'FAIL' "Trust mode $mode needs this in ClientAuthIssuer: $($need.Subject). certutil -addstore ClientAuthIssuer <file>.cer, then reboot" }
+}
+
 Head 'STAGE 3 - Machine proxy used for CRL/OCSP downloads'
 (netsh winhttp show proxy) | ForEach-Object { Out-R $_ }
 
