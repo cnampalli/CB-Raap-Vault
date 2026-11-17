@@ -21,3 +21,22 @@ testable, and fast.
 
 Check whether an existing script already covers the task. Only create a new one
 when nothing here fits.
+
+## `venafi_pki_proof.py`
+
+Evidence report that Vault's Venafi PKI secrets engine really issues through Venafi TPP
+(guide `vault-integrations/09` §5). Checks P1–P11: Vault health, mount type/version, catalog SHA-256,
+issuance, key/cert match, chain (as returned and against an out-of-band enterprise root), TPP
+inventory under the expected folder, TPP `Origin = HashiCorp Vault`, a refused out-of-policy name,
+and revoke. `--cert-file` mode proves a certificate taken from Kubernetes (cert-manager `tls.crt`).
+
+```bash
+export VAULT_ADDR=... VAULT_TOKEN=<consumer token> TPP_TOKEN=<read-only TPP token>
+python3 tools/venafi_pki_proof.py --namespace AUT --role web-aut --common-name "$CN" --alt-names "$CN" \
+  --trust-root enterprise-root.pem --tpp-url https://tpp.corp.example.com --tpp-ca tpp-chain.pem \
+  --expect-folder 'Certificates\Vault\AUT\Web' --negative-cn evil.example.com --revoke
+```
+
+Tokens come from the environment only. Needs the `openssl` CLI for chain checks. Writes
+`.tmp/venafi-proof/venafi-pki-proof-<UTC>.md|json` (no private key material). Exit 0 = PASS/SKIP only.
+

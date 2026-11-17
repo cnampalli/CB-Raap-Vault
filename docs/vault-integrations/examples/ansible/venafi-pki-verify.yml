@@ -1,0 +1,101 @@
+---
+# venafi-pki-verify.yml — prove the Venafi PKI plugin that Ansible placed is right on EVERY
+# Vault node (runbook 09, steps V2 and V4). Read-only by default.
+#
+#   ansible-playbook -i inventory venafi-pki-verify.yml
+#   ansible-playbook -i inventory venafi-pki-verify.yml -e tpp_host=tpp.corp.example.com
+#   # distribute the TPP trust bundle first (the only task that changes anything):
+#   ansible-playbook -i inventory venafi-pki-verify.yml --tags trust_bundle -e trust_bundle_src=./tpp-chain.pem
+#
+# Fails the play on any node that would break issuance after a leader election.
+- name: Verify venafi-pki-backend on every Vault node
+  hosts: vault_servers
+  become: true
+  gather_facts: false
+  vars:
+    venafi_plugin_file: venafi-pki-backend
+    venafi_plugin_sha256: "48eec75510d01cc721f971b68b692838cd5b09d3661082ce9b73a6dd961c99ec"   # v0.16.0 linux/amd64 BINARY
+    vault_config_dir: /etc/vault.d
+    vault_group: vault
+    trust_bundle_path: /etc/vault/tls/tpp-chain.pem
+    tpp_host: ""            # set to also prove TLS to TPP:443 from each node (firewall flow #11)
+
+  tasks:
+    - name: Distribute the TPP WebSDK trust bundle (opt-in)
+      ansible.builtin.copy:
+        src: "{{ trust_bundle_src }}"
+        dest: "{{ trust_bundle_path }}"
+        owner: root
+        group: "{{ vault_group }}"
+        mode: "0640"
+      tags: [never, trust_bundle]
+
+    - name: Read plugin_directory from the Vault server config
+      ansible.builtin.shell: |
+        set -o pipefail
+        grep -rhsE '^[[:space:]]*plugin_directory[[:space:]]*=' {{ vault_config_dir }} | tail -1 \
+          | sed -E 's/.*=[[:space:]]*"?([^"]+)"?.*/\1/'
+      args:
+        executable: /bin/bash
+      register: plugin_dir_cfg
+      changed_when: false
+      failed_when: plugin_dir_cfg.stdout | length == 0
+
+    - name: Stat plugin_directory (do not follow symlinks)
+      ansible.builtin.stat:
+        path: "{{ plugin_dir_cfg.stdout }}"
+        follow: false
+      register: plugin_dir
+
+    - name: Check the mount options of plugin_directory
+      ansible.builtin.command: findmnt -no OPTIONS --target {{ plugin_dir_cfg.stdout }}
+      register: plugin_dir_mount
+      changed_when: false
+
+    - name: Stat the plugin binary with its SHA-256
+      ansible.builtin.stat:
+        path: "{{ plugin_dir_cfg.stdout }}/{{ venafi_plugin_file }}"
+        checksum_algorithm: sha256
+        follow: false
+      register: plugin_bin
+
+    - name: Stat the TPP trust bundle
+      ansible.builtin.stat:
+        path: "{{ trust_bundle_path }}"
+      register: bundle
+
+    - name: Assert node layout
+      ansible.builtin.assert:
+        that:
+          - plugin_dir.stat.exists and plugin_dir.stat.isdir
+          - not plugin_dir.stat.islnk
+          - "'noexec' not in plugin_dir_mount.stdout.split(',')"
+          - plugin_bin.stat.exists
+          - plugin_bin.stat.checksum == venafi_plugin_sha256
+          - plugin_bin.stat.gr_name == vault_group or plugin_bin.stat.pw_name == vault_group
+          - plugin_bin.stat.executable or plugin_bin.stat.xgrp
+          - not plugin_bin.stat.wgrp and not plugin_bin.stat.woth
+          - bundle.stat.exists and bundle.stat.size > 0
+        fail_msg: >-
+          {{ inventory_hostname }}: plugin dir={{ plugin_dir_cfg.stdout }}
+          symlink={{ plugin_dir.stat.islnk | default('n/a') }} mount={{ plugin_dir_mount.stdout }}
+          sha256={{ plugin_bin.stat.checksum | default('missing') }} (want {{ venafi_plugin_sha256 }})
+          owner={{ plugin_bin.stat.pw_name | default('-') }}:{{ plugin_bin.stat.gr_name | default('-') }}
+          mode={{ plugin_bin.stat.mode | default('-') }} bundle={{ bundle.stat.exists }}
+        success_msg: "{{ inventory_hostname }}: sha256 {{ plugin_bin.stat.checksum }} OK"
+
+    - name: Prove TLS to TPP with the trust bundle from this node (flow #11)
+      ansible.builtin.shell: |
+        set -o pipefail
+        timeout 15 openssl s_client -connect {{ tpp_host }}:443 -servername {{ tpp_host }} \
+          -CAfile {{ trust_bundle_path }} -verify_return_error </dev/null 2>&1 | grep 'Verify return code'
+      args:
+        executable: /bin/bash
+      register: tpp_tls
+      changed_when: false
+      failed_when: "'Verify return code: 0 (ok)' not in tpp_tls.stdout"
+      when: tpp_host | length > 0
+
+    - name: Evidence line
+      ansible.builtin.debug:
+        msg: "EVIDENCE host={{ inventory_hostname }} sha256={{ plugin_bin.stat.checksum }} dir={{ plugin_dir_cfg.stdout }} tls={{ tpp_tls.stdout | default('not-checked') }}"

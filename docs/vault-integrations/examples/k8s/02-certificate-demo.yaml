@@ -1,0 +1,32 @@
+# 02 — demo Certificate used for the proof (runbook 09, step K7). Delete after sign-off.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: venafi-demo
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: demo-tls
+  namespace: venafi-demo
+spec:
+  secretName: demo-tls
+  commonName: demo.k8s.aut.corp.example.com
+  # Always list the CN here too: modern TLS clients ignore the CN, and the plugin copies SANs from
+  # the CSR exactly. Every name must be on the K8s folder's TPP domain whitelist.
+  dnsNames:
+    - demo.k8s.aut.corp.example.com
+  duration: 720h        # sent to Vault as ttl; honoured only if the CA template allows it (issuer_hint)
+  renewBefore: 240h     # cert-manager renews from the ACTUAL notAfter, whatever the CA chose
+  privateKey:
+    algorithm: RSA      # must satisfy the K8s folder's key policy in TPP
+    size: 2048
+    rotationPolicy: Always
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    name: vault-venafi
+    kind: ClusterIssuer
+    group: cert-manager.io
