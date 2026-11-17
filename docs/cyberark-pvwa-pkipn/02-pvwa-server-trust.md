@@ -71,6 +71,40 @@ going **direct**, and the server can't resolve the external name.
    ```
 4. 🖱 Do this on **every** PVWA server.
 
+**Still `12007` / `could not be resolved` after setting the proxy?** Windows is still going direct.
+Check in this order:
+
+1. **The setting itself.** Use host:port only, with no `http://`, in an **elevated, 64-bit** prompt.
+   A 32-bit (x86) PowerShell writes to a different registry key.
+   ```cmd
+   netsh winhttp set proxy proxy-server="10.x.x.x:3128" bypass-list="<local>"
+   netsh winhttp show proxy
+   ```
+   **Expected:** `Proxy Server(s) : 10.x.x.x:3128`. The bypass list must **not** match the CRL/OCSP
+   host (e.g. no `*.acme.test.au`).
+2. **WinHTTP uses it.** ⌨ PowerShell. This uses the machine WinHTTP setting, with no proxy given:
+   ```powershell
+   $r = New-Object -ComObject WinHttp.WinHttpRequest.5.1
+   $r.Open('GET', 'http://crl.acme.test.au/<path-from-certutil>.crl', $false); $r.Send(); $r.Status
+   ```
+   **Expected:** `200`. `12007` here means the netsh setting isn't being applied (back to 1). `407`
+   means the proxy wants a login. Ask the proxy team to allow the PVWA servers to reach the CRL/OCSP
+   hosts **without** authentication, because IIS can't log in to a proxy.
+3. **Test as SYSTEM, the way IIS checks.** `certutil` in your own session can use **your user's**
+   Internet Options proxy and **your user's** URL cache, not the machine's. IIS validates client
+   certificates in the machine context. Run the check as SYSTEM:
+   ```cmd
+   schtasks /create /tn pkicheck /sc once /st 00:00 /ru SYSTEM /f /tr "cmd /c certutil -urlcache * delete & certutil -verify -urlfetch C:\temp\user.cer > C:\temp\verify-system.txt 2>&1"
+   schtasks /run /tn pkicheck
+   timeout /t 60
+   type C:\temp\verify-system.txt
+   schtasks /delete /tn pkicheck /f
+   ```
+   **Expected:** CRL `Verified` and `Leaf certificate revocation check passed`. **This** result is the
+   one that matters for login. Your own session's result is secondary.
+4. **Ignore `ldap://` lines.** If the certificate also lists `ldap://` CDP/AIA URLs, errors like
+   `ERROR_BAD_NET_RESP` on those are harmless when an `http://` URL is `Verified`.
+
 **Expected:** Step 2 passes. Under *Certificate CDP*, the CRL shows `Verified`. Last line: `Leaf
 certificate revocation check passed`.
 
