@@ -143,5 +143,6 @@ stop the login. Fix it anyway for speed:
 | `CERT_TRUST_IS_PARTIAL_CHAIN` | Intermediate missing (Step 1) |
 | `CERT_TRUST_REVOCATION_STATUS_UNKNOWN` / `IS_OFFLINE_REVOCATION` | CRL/OCSP not reachable (Step 3) |
 | `could not be resolved` / `0x80072ee7` (12007) | WinHTTP proxy not set; a PowerShell or web.config proxy doesn't count (Step 3) |
+| WinHTTP test `200` and the SYSTEM test passes, but `certutil` in your own session gives `12007` | Not a problem for login. Your session uses **your user's** proxy settings and URL cache, while IIS uses the machine ones. To make your session work too: set the proxy in Internet Options → Connections → LAN settings, then `certutil -urlcache * delete` |
 | CRL `Verified`, OCSP failed, check **passed** | Not blocking: Windows fell back to the CRL. Allow the OCSP host on the proxy when convenient |
 | `CERT_TRUST_IS_REVOKED` | The certificate really is revoked. Reissue |
