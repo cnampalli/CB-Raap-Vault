@@ -3,7 +3,24 @@
 Work through the stages **in order**. Each one depends on the one before it. Stop at the first that
 fails.
 
-## Collect first (2 minutes, on the PVWA server that served the attempt)
+## Run the diagnostic script first
+
+On **each** PVWA server, as Administrator, with the user's **public** `user.cer` (chunk 01):
+
+1. 🖱 Copy [`tools/pkipn-diagnose.ps1`](tools/pkipn-diagnose.ps1) to the server.
+2. ⌨ `wevtutil sl Microsoft-Windows-CAPI2/Operational /e:true` (enables certificate logging).
+3. 🖱 Try the certificate login once from a workstation, so the logs hold a failed attempt.
+4. ⌨ `powershell -ExecutionPolicy Bypass -File .\pkipn-diagnose.ps1 -UserCert C:\temp\user.cer`
+
+**Expected:** a `pkipn-report-<server>-<time>.txt` with `[OK]` / `[FAIL]` lines for stages 2–4, plus
+the binding, IIS sslFlags per folder, PKIPN DLL locations, the PKI lines in your web.config, and recent
+403 sub-statuses. The first `[FAIL]` points to the table below. The script only reads. It doesn't
+change anything.
+
+The report also answers three things the guide marks 📋: which **DLL** your install has, what your
+**web.config** already contains for PKI, and which **IIS folders** exist under `PasswordVault\auth`.
+
+## Or collect by hand (on the PVWA server that served the attempt)
 
 | What | Where |
 |---|---|

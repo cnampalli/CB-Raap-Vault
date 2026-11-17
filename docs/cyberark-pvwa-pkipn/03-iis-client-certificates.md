@@ -22,8 +22,9 @@ For the PVWA's `0.0.0.0:443` (or `IP:443` / `hostname:443`) entry, note:
 ## Step 2 — Require client certificates on the PKI login path only
 
 1. 🖱 **IIS Manager** → *Sites* → the PVWA site (e.g. *Default Web Site*) → **PasswordVault** →
-   expand down to the PKI authentication folder (`auth` → `pkipn`, or `auth` → `pki`). Use the folder
-   the 14.6 CyberArk page names.
+   expand down to the PKI authentication folder. Community guides name **`auth` → `pki`**. If an
+   `auth` → `pkipn` folder also exists, set both. The diagnostic script (chunk 07) lists the folders
+   that exist on your server and their current setting.
 2. 🖱 Select that folder → **SSL Settings** → tick **Require SSL** → **Client certificates:
    Require** → **Apply**.
 3. 🖱 Leave the rest of `PasswordVault` on **Ignore**. Otherwise every PVWA page asks for a certificate,

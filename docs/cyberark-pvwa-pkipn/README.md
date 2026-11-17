@@ -43,8 +43,9 @@ Browser ──TLS──► IIS on PVWA ──► PVWA app (PKIPN) ──► Vaul
 | 06 | [Test end to end](06-test.md) | CyberArk admin + a test user |
 | 07 | [Troubleshooting](07-troubleshooting.md) | All |
 
-**Already set up and it doesn't work?** Go to [07 — Troubleshooting](07-troubleshooting.md). It
-walks the five stages in order.
+**Already set up and it doesn't work?** Run [`tools/pkipn-diagnose.ps1`](tools/pkipn-diagnose.ps1)
+on each PVWA server (read-only), then use [07 — Troubleshooting](07-troubleshooting.md) for the first
+`[FAIL]` line. It walks the five stages in order.
 
 ## Before you start
 
