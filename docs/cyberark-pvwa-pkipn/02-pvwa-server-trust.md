@@ -117,6 +117,17 @@ stop the login. Fix it anyway for speed:
   Some proxies block or rewrite that. Ask the proxy team to allow it to the OCSP host.
 - The **intermediate** CA's revocation is checked too: its CRL (published by the root CA) must also
   be reachable. Check every CDP URL in the `certutil` output, not only the user certificate's.
+- **Testing OCSP with a plain web request is misleading.** An OCSP responder only answers real OCSP
+  requests. A browser-style GET to its URL usually returns `400`/`405`, and that means **reachable**.
+  Only a proxy error (Squid `403 ERR_ACCESS_DENIED`), a timeout or `12007` means blocked. Real test, in
+  Git Bash, with the user and issuing-CA certificates as PEM:
+  ```bash
+  openssl x509 -inform DER -in user.cer -out user.pem
+  openssl ocsp -issuer ext-intermediate.pem -cert user.pem \
+    -url http://<ocsp-host>/<path> -proxy 10.x.x.x:3128 -noverify -resp_text | grep -E 'Cert Status|Response Status'
+  ```
+  **Expected:** `OCSP Response Status: successful` and `Cert Status: good`. `-proxy` needs OpenSSL 3.x
+  (`openssl version`).
 
 ## Done when
 
