@@ -45,14 +45,44 @@ certutil -verify -urlfetch user.cer
 PVWA servers are often locked down. The **external** CA's CRL and OCSP URLs (chunk 01) are on the
 internet.
 
-1. ⌨ Is a proxy needed? `netsh winhttp show proxy`. Revocation checks use the **machine** (WinHTTP)
-   proxy, not the browser's.
-2. 🖱 If `certutil -urlfetch` showed failures: open the firewall/proxy for the CDP and AIA/OCSP URLs
-   from **every** PVWA server, or set the proxy:
-   `netsh winhttp set proxy proxy-server="proxy.corp:8080" bypass-list="*.corp.example.com"`.
-3. ⌨ Re-run Step 2.
+**Which proxy matters.** Windows certificate validation (IIS checking the client certificate, and
+`certutil`) uses **only the WinHTTP machine proxy**. These do **not** help:
+- a proxy set in a PowerShell session or script (`Invoke-WebRequest -Proxy`, `[Net.WebRequest]::DefaultWebProxy`)
+- a `<system.net><defaultProxy>` stanza in the PVWA `web.config`, which only affects the PVWA
+  application's own HTTP calls
+- the browser / Internet Options proxy, unless you import it into WinHTTP
 
-**Expected:** Step 2 passes with all URLs `Verified`.
+A PowerShell download of the CRL that works therefore proves the proxy path, not that IIS can use it.
+`could not be resolved` / `ERROR_WINHTTP_NAME_NOT_RESOLVED` (12007) in `certutil` means WinHTTP is
+going **direct**, and the server can't resolve the external name.
+
+1. ⌨ `netsh winhttp show proxy`. *Direct access (no proxy server)* means it isn't set.
+2. ⌨ Set it, in an **elevated** Command Prompt. Use the same proxy your working PowerShell script uses,
+   and keep internal names direct:
+   ```cmd
+   netsh winhttp set proxy proxy-server="http=proxy.corp:8080;https=proxy.corp:8080" bypass-list="<local>;*.corp.example.com"
+   ```
+   Or copy the Internet Options proxy: `netsh winhttp import proxy source=ie`.
+3. ⌨ Clear Windows' cached failures, then re-run Step 2:
+   ```cmd
+   certutil -urlcache * delete
+   certutil -setreg chain\ChainCacheResyncFiletime @now
+   certutil -verify -urlfetch user.cer
+   ```
+4. 🖱 Do this on **every** PVWA server.
+
+**Expected:** Step 2 passes. Under *Certificate CDP*, the CRL shows `Verified`. Last line: `Leaf
+certificate revocation check passed`.
+
+**OCSP failing while the CRL works.** Windows tries OCSP first and **falls back to the CRL**. If the
+CRL is `Verified` and the output ends with *revocation check passed*, an OCSP failure does **not**
+stop the login. Fix it anyway for speed:
+- The OCSP host is usually a **different name** (e.g. `ocsp.acme…`) from the CRL host. Allow it
+  on the proxy/firewall too.
+- OCSP is plain `http://`, often sent as **POST** with `Content-Type: application/ocsp-request`.
+  Some proxies block or rewrite that. Ask the proxy team to allow it to the OCSP host.
+- The **intermediate** CA's revocation is checked too: its CRL (published by the root CA) must also
+  be reachable. Check every CDP URL in the `certutil` output, not only the user certificate's.
 
 ## Done when
 
@@ -67,4 +97,6 @@ internet.
 | `CERT_TRUST_IS_UNTRUSTED_ROOT` | Root missing or in the wrong store (Step 1) |
 | `CERT_TRUST_IS_PARTIAL_CHAIN` | Intermediate missing (Step 1) |
 | `CERT_TRUST_REVOCATION_STATUS_UNKNOWN` / `IS_OFFLINE_REVOCATION` | CRL/OCSP not reachable (Step 3) |
+| `could not be resolved` / `0x80072ee7` (12007) | WinHTTP proxy not set; a PowerShell or web.config proxy doesn't count (Step 3) |
+| CRL `Verified`, OCSP failed, check **passed** | Not blocking: Windows fell back to the CRL. Allow the OCSP host on the proxy when convenient |
 | `CERT_TRUST_IS_REVOKED` | The certificate really is revoked. Reissue |
