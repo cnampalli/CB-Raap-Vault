@@ -34,6 +34,7 @@ server's local time (`tzutil /g` shows it). Compare the same attempt.
 | `403 13` | 3 | Revoked, **or the CRL couldn't be downloaded** | [Stage 3, 403 13](#403-13-revocation) |
 | `403 17` | 3 | Expired or not yet valid | Reissue the certificate; check clocks |
 | `403 12` | 3 | IIS certificate mapping refused it | Remove IIS client-certificate mapping from the site; PVWA does the mapping |
+| `500 0 0` on the pkipn request, often with a long time taken (last number, ms; e.g. `31886` = 32 s) | 4–5 | IIS accepted the certificate. PVWA failed while handling it, usually waiting on something that timed out (Vault/LDAP lookup, or PVWA's own certificate check fetching CRLs) | [Stage 4](#stage-4--pvwa-reads-the-certificate): get the PVWA log lines for that request (09 section 4) and `ITALog.log` |
 | `200` (or `401`), then a PVWA error | 4–5 | IIS accepted the certificate. PVWA or the Vault said no | [Stage 4](#stage-4--pvwa-reads-the-certificate) then [Stage 5](#stage-5--the-vault-accepts-the-user) |
 
 ## Stage 1 — The browser trusts the PVWA page
@@ -100,6 +101,8 @@ that request (09 section 4).
 | `pkipn` method missing or disabled | 04 Step 3 |
 | Issuer restriction set to a different CA name (e.g. after the CA renewed) | 04 Step 5: copy the exact Issuer from `user.cer` |
 | `ValidatePKICertificate` = Yes and the certificate fails a check | Fix the certificate (01). To confirm only: set No, test, set Yes again |
+| IIS `500` after ~15–60 s; PVWA log shows a timeout or chain/revocation error | `ValidatePKICertificate` = Yes makes PVWA check the certificate again, as the **app pool** account. It tries every CRL/AIA URL, including `ldap://` ones the server can't reach, and waits for each | To confirm: set `ValidatePKICertificate` = No, test, set it back. Fix: make the `http://` URLs reachable (02 Step 4) and ask the CA team whether the `ldap://` URLs are needed, or allow them |
+| IIS `500` after ~30 s; `ITALog.log` shows LDAP errors for the user | The Vault couldn't find or create the user through LDAP in time (LDAP server or domain unreachable from the Vault, or the mapping searches the wrong branch) | 05 Step 1; check the Vault's LDAP connection for that domain |
 | User picked **PKI** instead of the PKIPN option | Use the PKIPN option on the sign-in page. IIS log shows `/auth/pki/logon` instead of `/auth/pkipn/logon` |
 
 ## Stage 5 — The Vault accepts the user
