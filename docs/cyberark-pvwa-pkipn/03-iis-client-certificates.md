@@ -3,6 +3,9 @@
 **Who:** Windows admin, on **every** PVWA server · **Needs:** chunk 02 done
 **Gives:** the browser is asked for a certificate on the PKIPN login, and IIS accepts it
 
+**In short:** check the HTTPS binding, set *Require client certificate* on the PKI login folder only,
+and (Server 2022+) handle TLS 1.3.
+
 ## Step 1 — Note the HTTPS binding settings
 
 ⌨
@@ -15,7 +18,7 @@ For the PVWA's `0.0.0.0:443` (or `IP:443` / `hostname:443`) entry, note:
 |---|---|---|
 | **Certificate Hash** | The internal-CA PVWA certificate | Must stay the same when you change the binding |
 | **Application ID** | Note it | Needed to recreate the binding |
-| **Verify Client Certificate Revocation** | `Enabled` | Keep it on. Turn off only to diagnose, never in production |
+| **Verify Client Certificate Revocation** | `Enabled` | Keep it on. Turned off for a test? Turn it back on with the `netsh http update` command in 07 *403 13* |
 | **Ctl Store Name** / **CTL Identifier** | Empty, **or** a CTL that **includes the external CA** | If a CTL is set, IIS accepts only those issuers. A CTL without the external CA → `403.16` |
 | **Negotiate Client Certificate** | See Step 3 | Needed for TLS 1.3 |
 
@@ -23,7 +26,7 @@ For the PVWA's `0.0.0.0:443` (or `IP:443` / `hostname:443`) entry, note:
 
 1. 🖱 **IIS Manager** → *Sites* → the PVWA site (e.g. *Default Web Site*) → **PasswordVault** →
    expand down to the PKI authentication folder. Community guides name **`auth` → `pki`**. If an
-   `auth` → `pkipn` folder also exists, set both. The diagnostic script (chunk 07) lists the folders
+   `auth` → `pkipn` folder also exists, set both. The diagnostic script (chunk 08 Step 0) lists the folders
    that exist on your server and their current setting.
 2. 🖱 Select that folder → **SSL Settings** → tick **Require SSL** → **Client certificates:
    Require** → **Apply**.

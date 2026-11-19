@@ -5,6 +5,9 @@
 [PKI authentication (Personal Certificate) for the PVWA](https://docs.cyberark.com/pam-self-hosted/14.6/en/content/pas%20inst/pki-authentication-personal-certificate.htm)
 **Gives:** a **PKIPN** login option on the PVWA sign-in page
 
+**In short:** copy the PKIPN DLL into place, add its lines to `PasswordVault\web.config`, create the
+`pkipn` authentication method in PVWA, and (recommended) restrict it to the external CA.
+
 > CyberArk's docs couldn't be read automatically when this was written, so lines marked **📋 copy
 > from the 14.6 page** must be taken word for word from that page. Don't type them from memory.
 > Older versions use different DLL names and folders.
@@ -15,7 +18,7 @@
 `C:\inetpub\wwwroot\PasswordVault\web.config`) to `web.config.bak-<date>`.
 
 Edit **`PasswordVault\web.config`**, the application's own file that IIS loads. Some installs also
-have copies under `Bin` or `Env`; IIS doesn't read those. The diagnostic script (chunk 07) lists
+have copies under `Bin` or `Env`; IIS doesn't read those. The diagnostic script (chunk 08 Step 0) lists
 which exist and their PKI lines.
 
 ## Step 2 — Put the PKIPN module in place (each PVWA server)

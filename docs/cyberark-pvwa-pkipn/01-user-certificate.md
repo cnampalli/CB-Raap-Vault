@@ -3,6 +3,9 @@
 **Who:** you / PKI team · **Needs:** the test user's certificate as a `.cer` file (public part only)
 **Gives:** proof that the certificate has everything PKIPN needs
 
+**In short:** export the user's certificate (no private key), read it with `certutil -dump`, and check
+it has a **Principal Name**, the **Client Authentication** EKU and valid dates.
+
 Most PKIPN failures with **external** certificates come from the certificate itself. External
 providers often put the **e-mail address** in the SAN and **no UPN**, and PKIPN has nothing to read.
 

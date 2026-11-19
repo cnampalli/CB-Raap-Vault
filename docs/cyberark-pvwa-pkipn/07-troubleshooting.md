@@ -1,151 +1,160 @@
 # 07 — Troubleshooting
 
-Work through the stages **in order**. Each one depends on the one before it. Stop at the first that
-fails.
+**In short:** get the **IIS result** for one failed attempt, find it in the first table, do what it
+says. Fix one thing at a time and test again after each fix.
 
-## Run the diagnostic script first
+## Step 1 — Get the evidence for one attempt
 
-On **each** PVWA server, as Administrator, with the user's **public** `user.cer` (chunk 01):
-
-1. 🖱 Copy [`tools/pkipn-diagnose.ps1`](tools/pkipn-diagnose.ps1) to the server.
-2. ⌨ `wevtutil sl Microsoft-Windows-CAPI2/Operational /e:true` (enables certificate logging).
-3. 🖱 Try the certificate login once from a workstation, so the logs hold a failed attempt.
-4. ⌨ `powershell -ExecutionPolicy Bypass -File .\pkipn-diagnose.ps1 -UserCert C:\temp\user.cer`
-
-**Expected:** a `pkipn-report-<server>-<time>.txt` with `[OK]` / `[FAIL]` lines for stages 2–4, plus
-the binding, IIS sslFlags per folder, PKIPN DLL locations, the PKI lines in your web.config, and recent
-403 sub-statuses. The first `[FAIL]` points to the table below. The script only reads. It doesn't
-change anything.
-
-The report also answers three things the guide marks 📋: which **DLL** your install has, what your
-**web.config** already contains for PKI, and which **IIS folders** exist under `PasswordVault\auth`.
-
-## Or collect by hand (on the PVWA server that served the attempt)
-
-| What | Where |
-|---|---|
-| IIS status + **sub-status** | `C:\inetpub\logs\LogFiles\W3SVC1\u_ex<yymmdd>.log`, columns `sc-status sc-substatus sc-win32-status` |
-| Certificate chain / revocation errors | Event Viewer → *Applications and Services Logs* → *Microsoft* → *Windows* → **CAPI2** → *Operational*. Right-click → **Enable Log** first, then retry the login |
-| TLS handshake errors | Event Viewer → *Windows Logs* → **System**, source **Schannel** |
-| PVWA application errors | `C:\Windows\Temp\PVWA\` (PVWA application logs; newest file) |
-| Vault side | Vault server `…\PrivateArk\Server\Logs\ITALog.log`, around the login time |
-| Binding | `netsh http show sslcert` |
-
-## Stage 1 — Browser ↔ PVWA server certificate (internal CA)
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| "Your connection is not private" on the PVWA page | Workstation doesn't trust the internal CA | Deploy the internal root to workstations (GPO) |
-
-## Stage 2 — Is a certificate requested and sent?
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| No certificate prompt, **`403.7`** | IIS isn't asking at the right point | Chunk 03 Step 2 (folder *Require*), Step 3 (TLS 1.3) |
-| No prompt, but the cert is installed | Browser cached a previous choice / cancel | New InPrivate window; restart the browser |
-| Cert not in the prompt list | No private key; missing Client Authentication EKU; or the server sends an issuer list (CTL) without the external CA | Chunk 01 Steps 2–3; chunk 03 Step 1 (CTL) |
-| Works on TLS 1.2, fails on TLS 1.3 | No post-handshake auth | Chunk 03 Step 3 |
-| `ERR_HTTP2_…` / `HTTP_1_1_REQUIRED` | HTTP/2 can't renegotiate for a client cert | Usually the browser retries on HTTP/1.1. If not, use chunk 03 Step 3A |
-
-## Stage 3 — Does Windows trust the certificate? (most common with an external CA)
-
-⌨ First run `certutil -verify -urlfetch user.cer` **on the PVWA server**. Read CAPI2 for the attempt.
-
-| IIS sub-status | Meaning | Fix |
-|---|---|---|
-| **`403.16`** with win32 **`2148204809`** (`0x800B0109`, untrusted root) | The chain from the certificate the browser **actually sent** ends at a root IIS doesn't accept | **(1)** The browser sent a different certificate than you tested. No PIN prompt is a clue: a software cert was picked instead of the smart card. Check CAPI2 **Event 11** for the subject and thumbprint, and re-run chunk 02's SYSTEM test with *that* cert. **(2)** IIS is limited to the **Client Authentication Issuers** store: a *Ctl Store Name* on the binding (`netsh http show sslcert`) or `ClientAuthTrustMode` = 1/2 (`reg query HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL /v ClientAuthTrustMode`). Add the external root (and, for mode 2, the issuing CA) with `certutil -addstore ClientAuthIssuer <file>.cer`, then **reboot**. **(3)** Non-self-signed certs in LocalMachine\Root (script: `Not self-signed, move to Intermediate CAs`): see [below](#40316-with-a-non-self-signed-cert-in-trusted-root) |
-| **`403.16`** (other codes) | Client certificate untrusted or invalid | Root not in Local Computer *Trusted Root*; intermediate missing; an **intermediate sitting in Trusted Root** (any non-self-signed cert there breaks client auth); or a CTL on the binding that lacks the external CA. Chunk 02 Step 1, chunk 03 Step 1 |
-| **`403.13`** | Revoked, **or the CRL couldn't be downloaded** | Usually the PVWA server can't reach the external CA's CRL/OCSP (proxy/firewall). Chunk 02 Step 3. To confirm only: turn off *Verify Client Certificate Revocation* on the binding, test, **turn it back on** |
-| **`403.17`** | Expired / not yet valid | Reissue; check the clocks |
-| `403.12` | Mapping denied | IIS client-certificate mapping is configured on the site. Remove it; PKIPN does the mapping |
-
-### 403.16 with a non-self-signed cert in Trusted Root
-
-Seen on a Server 2019 PVWA: the chain builds fine (`certutil -verify` passes, the external root is in
-LocalMachine\Root, revocation passes as SYSTEM), yet IIS logs `403 16 2148204809` for every certificate.
-The report shows `[FAIL] Not self-signed, move to Intermediate CAs: CN=<internal sub-CA>`. With
-`ClientAuthTrustMode` = 0, one intermediate in Trusted Root is enough to make Schannel reject client
-certificates as untrusted root, whatever CA issued them (Microsoft KB 2802568). The cert there is often
-the **internal** CA's issuing CA, imported with the PVWA web certificate.
-
-1. ⌨ See where it's stored (the report's `stored in:` line says the same):
-   ```cmd
-   certutil -store Root <thumbprint>
-   certutil -grouppolicy -store Root <thumbprint>
-   certutil -enterprise -store Root <thumbprint>
-   ```
-   If it's in **GroupPolicy** or **Enterprise**, deleting it locally won't last: the next `gpupdate`
-   puts it back. Have the GPO / AD owner move it to *Intermediate Certification Authorities* there.
-   ⌨ `gpresult /scope computer /h C:\temp\gp.html`, then open the file → *Public Key Policies* →
-   *Trusted Root Certification Authorities*: it names the **Winning GPO**. Until it's fixed, use
-   "Can't move it" below.
-2. ⌨ Check its own root is in Trusted Root (report: `its own root in Root: yes`). A common mix-up
-   is **swapped** internal CAs: the sub-CA in *Trusted Root* and the internal root in *Intermediate*
-   (report: `WARN Self-signed (root) cert only in Intermediate CAs`). Then **first** import that root
-   into `LocalMachine\Root`, **then** move the sub-CA. In that order the PVWA web certificate's chain
-   never breaks. Check it afterwards: ⌨ `certutil -verifystore MY <binding cert hash>` must end at the
-   internal root with `-verifystore command completed successfully`. If the swap shows on every
-   domain server, the CA certs were probably published to AD into the wrong containers
-   (`certutil -dspublish … RootCA` vs `SubCA`): the AD CS admin fixes it there.
-3. ⌨ Move it (LocalMachine store; PowerShell as Administrator):
+1. 🖱 Copy [`tools/pkipn-collect.ps1`](tools/pkipn-collect.ps1) to `C:\temp` on the PVWA server.
+   Behind a load balancer: point the browser at **this** server directly, or run it on every server.
+2. ⌨ PowerShell **as Administrator**:
    ```powershell
-   $t = '<thumbprint>'
-   Export-Certificate -Cert "Cert:\LocalMachine\Root\$t" -FilePath C:\temp\sub-ca.cer
-   Import-Certificate -FilePath C:\temp\sub-ca.cer -CertStoreLocation Cert:\LocalMachine\CA
-   Remove-Item "Cert:\LocalMachine\Root\$t"
+   cd C:\temp
+   powershell -ExecutionPolicy Bypass -File .\pkipn-collect.ps1
    ```
-4. 🖱 **Reboot** the PVWA server. Schannel caches its trust lists; `iisreset` is not enough.
-5. ⌨ Re-run the script. **Expected:** `[OK] Only self-signed certificates in LocalMachine\Root`.
-6. 🖱 Retry the login in a new InPrivate window. **Expected:** the IIS log line is no longer `403 16`.
+3. 🖱 When it says *Ready*, try the certificate login **once**, in a **new InPrivate** window.
+   Then press **Enter** in PowerShell.
+4. **Expected:** it prints a summary and makes `C:\temp\pkipn-evidence-<server>-<time>.zip`.
 
-**Can't move it** (owned by someone else, needed in Root): use exclusive CA trust instead.
-⌨ `reg add HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL /v ClientAuthTrustMode /t REG_DWORD /d 2 /f`,
-then `certutil -addstore ClientAuthIssuer` the external **root** and **issuing CA** `.cer` files, then reboot.
-Only certificates from CAs in that store are accepted afterwards.
+Not sure the setup is complete at all? Run the checklist in [08](08-check-existing-setup.md) first.
+Need more detail than the summary gives? Turn on [09 — Debug logging](09-debug-logging.md) and repeat.
 
-**Afterwards, turn revocation back on** if you turned it off to test. `netsh http update sslcert` resets
-options you leave out, so pass the ones you rely on (hash and app ID from `netsh http show sslcert`):
+## Step 2 — Find your line
+
+The IIS line for `/PasswordVault/api/auth/pkipn/logon` ends with `… 403 16 2148204809 12`: status,
+**sub-status**, win32 code, time taken.
+
+| IIS shows | Stage | It means | Go to |
+|---|---|---|---|
+| No line at all | 1 | The request didn't reach this server, or the browser refused the PVWA page | Other server? Browser warning? → [Stage 1](#stage-1--the-browser-trusts-the-pvwa-page) |
+| `403 7` | 2 | No certificate was sent | [Stage 2](#stage-2--a-certificate-is-asked-for-and-sent) |
+| `403 16 2148204809` | 3 | Certificate not trusted (untrusted root) | [Stage 3, 403 16](#403-16-not-trusted) |
+| `403 16` (other code) | 3 | Certificate not valid for IIS | [Stage 3, 403 16](#403-16-not-trusted) |
+| `403 13` | 3 | Revoked, **or the CRL couldn't be downloaded** | [Stage 3, 403 13](#403-13-revocation) |
+| `403 17` | 3 | Expired or not yet valid | Reissue the certificate; check clocks |
+| `403 12` | 3 | IIS certificate mapping refused it | Remove IIS client-certificate mapping from the site; PVWA does the mapping |
+| `200` (or `401`), then a PVWA error | 4–5 | IIS accepted the certificate. PVWA or the Vault said no | [Stage 4](#stage-4--pvwa-reads-the-certificate) then [Stage 5](#stage-5--the-vault-accepts-the-user) |
+
+## Stage 1 — The browser trusts the PVWA page
+
+| You see | Fix |
+|---|---|
+| "Your connection is not private" on the PVWA page | The workstation doesn't trust the **internal** CA. Deploy the internal root to workstations (GPO) |
+
+## Stage 2 — A certificate is asked for and sent
+
+| You see | Fix |
+|---|---|
+| No certificate prompt, `403 7` | 03 Step 2 (*Require* on the PKI folder). On Server 2022+: 03 Step 3 (TLS 1.3) |
+| No prompt, but the certificate is installed | The browser remembers an earlier choice or *Cancel*. Close **all** browser windows, new InPrivate window |
+| Certificate missing from the prompt list | No private key, or no *Client Authentication* EKU (01 Step 2–3); or a CTL on the binding (03 Step 1) |
+| `ERR_HTTP2_…` / `HTTP_1_1_REQUIRED` | 03 Step 3A |
+
+## Stage 3 — IIS trusts the certificate
+
+### 403 16: not trusted
+
+Check these in order. The diagnostic script (08 Step 0) shows each one.
+
+1. **A sub-CA (intermediate) in Trusted Root.** Script: `[FAIL] Not self-signed, move to Intermediate CAs`.
+   **Any** intermediate there, internal or external, makes IIS refuse every client certificate with
+   `403 16 2148204809`, even when everything else is right (Microsoft KB 2802568).
+   Fix: 02 Step 2. If the script says `stored in: GroupPolicy`, a GPO puts it back: 02 Step 3.
+2. **External root or issuing CA missing** from the computer stores, or only in *Current User*.
+   Script: `Root is NOT in LocalMachine\Root`, or `PartialChain`. Fix: 02 Step 1.
+3. **IIS limited to a list of issuers that lacks the external CA.** Script: a `CTL store` WARN on the
+   binding, or `ClientAuthTrustMode` = 1 or 2 with the external CA not in `ClientAuthIssuer`. Fix:
+   02 Step 3 (add it to `ClientAuthIssuer`), or remove the CTL (03 Step 1).
+4. **The browser sent a different certificate than you tested.** The collector's *Certificate checks
+   by IIS* line shows the subject and thumbprint IIS really checked. No PIN prompt is a clue: a
+   software certificate was chosen instead of the smart card. Test again with the right one.
+
+After any change in 1–3: **reboot**. `iisreset` is not enough.
+
+### 403 13: revocation
+
+The PVWA server couldn't confirm the certificate isn't revoked, nearly always because it can't
+download the external CA's CRL. Run 02 Step 4 (the SYSTEM test). If that fails, see
+[Revocation and proxy](#revocation-and-proxy) below.
+
+To **confirm** it's revocation (test only): turn *Verify Client Certificate Revocation* off on the
+binding, test, and **turn it back on**. `netsh http update` resets every option you leave out, so
+always give them all (hash and app ID from `netsh http show sslcert`):
 ```cmd
 netsh http update sslcert ipport=0.0.0.0:443 certhash=<hash> appid={<app-id>} certstorename=MY verifyclientcertrevocation=enable clientcertnegotiation=enable
 ```
-**Expected:** *Verify Client Certificate Revocation: Enabled*, *Negotiate Client Certificate: Enabled*.
-Retry the login. A new `403.13` here means IIS can't reach the CRL as SYSTEM: chunk 02 Step 3.
+**Expected:** `netsh http show sslcert` shows *Verify Client Certificate Revocation: Enabled* and
+*Negotiate Client Certificate: Enabled*.
 
-> The script's chain check runs as **you**. `RevocationStatusUnknown` / `OfflineRevocation` there, with
-> the SYSTEM test in chunk 02 passing, is your user's proxy settings, not the login. The script marks
-> these `WARN`.
+## Stage 4 — PVWA reads the certificate
 
-> "I already trusted the CA" usually means it was imported into the **Current User** store, or into
-> one PVWA server only, or the intermediate went into *Trusted Root*. Check with `certlm.msc`
-> on **each** server.
-
-## Stage 4 — Does PVWA read a UPN from the certificate?
-
-Seen as: the certificate prompt succeeds (IIS log `200` on the pkipn request), then PVWA shows an
-authentication error.
+IIS shows `200` (or `401`) for the pkipn request, then PVWA shows an error. Look in the PVWA logs for
+that request (09 section 4).
 
 | Cause | Fix |
 |---|---|
-| No `Principal Name` in the SAN (external certs often carry only e-mail) | Reissue with a UPN SAN (chunk 01) |
-| PKIPN module not loaded: DLL missing on **this** PVWA server, or the PKIPN entry missing from `PasswordVault\web.config` (the file IIS loads; the report lists it) | Chunk 04 Step 2 on every server |
-| `pkipn` method missing or disabled | Chunk 04 Step 3 |
-| `ValidatePKICertificate=Yes` and the cert fails a check (CA cert, self-signed, key usage/EKU) | Fix the certificate (chunk 01), or set `No` briefly to confirm |
-| Issuer restriction set to a different CA name | Chunk 04 Step 5: use the exact Issuer from `user.cer` |
+| No `Principal Name` in the certificate's SAN (only an e-mail) | Reissue with a UPN (01) |
+| PKIPN not installed on **this** server: DLL missing, or its lines missing from `PasswordVault\web.config` | 04 Step 2 (check with 08 A10–A11) |
+| `pkipn` method missing or disabled | 04 Step 3 |
+| Issuer restriction set to a different CA name (e.g. after the CA renewed) | 04 Step 5: copy the exact Issuer from `user.cer` |
+| `ValidatePKICertificate` = Yes and the certificate fails a check | Fix the certificate (01). To confirm only: set No, test, set Yes again |
+| User picked **PKI** instead of the PKIPN option | Use the PKIPN option on the sign-in page. IIS log shows `/auth/pki/logon` instead of `/auth/pkipn/logon` |
 
-## Stage 5 — Does the Vault accept the user?
+## Stage 5 — The Vault accepts the user
 
-Check `ITALog.log` on the Vault and the PVWA logs.
+Check the PVWA logs, and `ITALog.log` on the Vault (09 section 5).
 
 | Cause | Fix |
 |---|---|
-| User not found: UPN vs `sAMAccountName` name | Chunk 05 Step 2 |
-| User disabled / suspended / expired | Chunk 05 Step 3 |
-| LDAP user can't be created: no directory mapping matches the user's LDAP branch | Add or fix the directory mapping for that branch |
-| Not authorized from the PVWA network area / interface | Chunk 05 Step 3 |
-| **All** certificate logins fail, password logins work | PVWA gateway user (`PVWAGWUser`) locked or credential file stale. Check it in PrivateArk / the Vault log. Reset per CyberArk's credential-file procedure |
+| "User not found": the Vault name is `jdoe` but the certificate says `jdoe@corp…` | 05 Step 2 |
+| LDAP user can't be created: the directory mapping doesn't cover the user's domain or branch | 05 Step 2; 08 B6–B7 |
+| User disabled, suspended, expired, or not allowed through PVWA | 05 Step 3 |
+| **Every** certificate login fails, password logins work | PVWA gateway user (`PVWAGWUser`) suspended or its credential file stale. Check in PrivateArk and `ITALog.log`; reset per CyberArk's credential-file procedure |
+
+## Revocation and proxy
+
+Windows downloads CRLs through the **WinHTTP machine proxy** only (`netsh winhttp`). A proxy in
+PowerShell, in the browser, or in `web.config` doesn't count for IIS.
+
+| You see | Cause | Fix |
+|---|---|---|
+| `12007` / `could not be resolved` / `0x80072ee7` | WinHTTP goes direct, can't resolve the internet name | 02 Step 4 item 1. Use host:port, no `http://`, in a **64-bit, elevated** prompt. The bypass list must not match the CRL host |
+| SYSTEM test passes, your own `certutil` gives `12007` | Your session uses your user's proxy settings and cache | Not a login problem. Optional: set the proxy in Internet Options, `certutil -urlcache * delete` |
+| Script stage 3 shows `RevocationStatusUnknown` / `OfflineRevocation` as `WARN` | Same: the script runs as you | Trust the SYSTEM test (02 Step 4) |
+| WinHTTP test returns `407` | Proxy wants a login; IIS can't log in to a proxy | Ask the proxy team to allow the CRL/OCSP hosts from the PVWA servers without authentication |
+| CRL `Verified`, OCSP failed, check **passed** | Windows fell back to the CRL | Not blocking. Allow the OCSP host on the proxy when convenient |
+| Errors only on `ldap://` URLs | The `http://` URL worked | Harmless |
+
+**WinHTTP test** (uses the machine proxy, like IIS):
+```powershell
+$r = New-Object -ComObject WinHttp.WinHttpRequest.5.1
+$r.Open('GET', 'http://<crl-host>/<path>.crl', $false); $r.Send(); $r.Status
+```
+**Expected:** `200`.
+
+**OCSP test.** A plain web request to an OCSP URL returns `400`/`405`, which still means *reachable*.
+Only a proxy error page, a timeout or `12007` means blocked. A real test (Git Bash, OpenSSL 3.x):
+```bash
+openssl x509 -inform DER -in user.cer -out user.pem
+openssl ocsp -issuer ext-issuing-ca.pem -cert user.pem -url http://<ocsp-host>/<path> -proxy 10.x.x.x:3128 -noverify -resp_text | grep -E 'Cert Status|Response Status'
+```
+**Expected:** `OCSP Response Status: successful`, `Cert Status: good`.
 
 ## Still stuck
 
-Send CyberArk support: the IIS log line (with sub-status), the CAPI2 events for the attempt, the
-`certutil -verify -urlfetch user.cer` output, the PVWA log lines, and the `ITALog.log` lines. The
-private key never leaves the user's machine. `user.cer` is safe to share.
+Send CyberArk support:
+- the collector zip;
+- the diagnostic report;
+- `C:\temp\verify-system.txt` (02 Step 4);
+- the PVWA error text;
+- the Vault `ITALog.log` lines from the same minute.
+
+`user.cer` is safe to share. The private key never leaves the user's machine.
+
+## Seen on this deployment
+
+| Date | Symptom | Cause | Fix |
+|---|---|---|---|
+| 2026-11 | `403 16 2148204809` for every certificate; chain and revocation fine | Old internal sub-CA (`6B814EEE…`) pushed into *Trusted Root* by a **GPO**; internal root sitting only in *Intermediate* | Internal root added to Trusted Root, sub-CA moved locally (02 Step 2). The GPO re-adds it, so `ClientAuthTrustMode` = 2 with the external CAs (02 Step 3) until the GPO owner fixes the policy |
+| 2026-11 | `12007` on CRL download | `netsh winhttp` proxy not set | 02 Step 4 |
+| 2026-11 | IIS Manager: `Only one <configSections> element allowed` | A proxy stanza pasted above `<configSections>` in `PasswordVault\web.config` | 03 *If it fails* |

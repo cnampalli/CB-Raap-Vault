@@ -3,6 +3,9 @@
 **Who:** CyberArk admin + a test user on a workstation · **Needs:** chunks 01–05
 **Gives:** a working certificate login, with evidence
 
+**In short:** log in with the certificate from a fresh InPrivate window, check the IIS log says
+`200`, repeat on every PVWA server, then check that wrong certificates are refused.
+
 ## Step 1 — Browser trusts the PVWA (internal CA)
 
 🖱 On the test workstation, open `https://<pvwa>/PasswordVault` in Chrome or Edge.

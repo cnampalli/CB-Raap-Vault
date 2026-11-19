@@ -93,7 +93,7 @@ else {
   Out-R '  UntrustedRoot -> root not in LocalMachine\Root | PartialChain -> intermediate missing'
   Out-R '  RevocationStatusUnknown/OfflineRevocation -> CRL/OCSP unreachable (proxy/firewall). NOTE: this check runs as'
   Out-R ("  {0}, with your user's proxy and URL cache. IIS checks as SYSTEM via the netsh winhttp proxy." -f [Security.Principal.WindowsIdentity]::GetCurrent().Name)
-  Out-R '  If chunk 02 Step 3 (certutil -verify -urlfetch as SYSTEM) passes, these WARN lines do not affect the login.'
+  Out-R '  If chunk 02 Step 4 (certutil -verify -urlfetch as SYSTEM) passes, these WARN lines do not affect the login.'
   if ($revOnly) { Res 'OK' 'Chain itself builds to a trusted root (only revocation differs, see above)' }
 }
 $last = if ($chain.ChainElements.Count -gt 0) { $chain.ChainElements[$chain.ChainElements.Count - 1].Certificate } else { $null }
@@ -128,7 +128,7 @@ if ($bad) {
     $parent = Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Subject -eq $b.Issuer -and $_.Subject -eq $_.Issuer }
     Out-R ("       its own root in Root: {0}" -f $(if ($parent) { "yes [$($parent[0].Thumbprint)]" } else { 'NO - add that root first, or chains through this CA (e.g. the PVWA web cert) break' }))
   }
-  Out-R '  Fix: 07-troubleshooting.md, "403.16 + 2148204809", cause (3). Reboot afterwards.'
+  Out-R '  Fix: chunk 02 Step 2 (Step 3 if stored in GroupPolicy/Enterprise). Reboot afterwards.'
 }
 else { Res 'OK' 'Only self-signed certificates in LocalMachine\Root' }
 $rootsInCA = @(Get-ChildItem Cert:\LocalMachine\CA | Where-Object { $_.Subject -eq $_.Issuer -and $_.Subject -ne 'CN=Root Agency' })

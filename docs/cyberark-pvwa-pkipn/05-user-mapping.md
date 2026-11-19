@@ -3,6 +3,10 @@
 **Who:** CyberArk admin · **Needs:** the `Principal Name` from chunk 01
 **Gives:** the certificate's UPN finds exactly one Vault user
 
+**In short:** the Vault user name must be **exactly** the certificate's Principal Name
+(`user@domain`). If your Vault uses short names (`jdoe`), change the LDAP mapping or use the alternate
+name option.
+
 PKIPN logs in the Vault user whose **user name equals the certificate's Principal Name**. Check what
 your Vault user names look like.
 
@@ -31,7 +35,8 @@ Pick **one**:
 
 **B. Keep the existing names.** The 14.6 PKI page describes a web.config `<appSettings>` option to
 authenticate "with the same Principal Name but with a different Logon Name". 📋 Copy it from that
-page (chunk 04 link). Use this when changing to UPN names (A) isn't acceptable.
+page (chunk 04 link). A community guide names the key `UsePKIPNAlternateUserName`; use it only if
+the 14.6 page shows the same name. Use this when changing to UPN names (A) isn't acceptable.
 
 ## Step 3 — The Vault user can log in
 
@@ -45,7 +50,7 @@ page (chunk 04 link). Use this when changing to UPN names (A) isn't acceptable.
 
 > PVWA logs certificate users in to the Vault **on their behalf** through its own gateway user
 > (typically `PVWAGWUser`). If that account is locked or its credential file is stale, every
-> certificate login fails at this stage, while CyberArk password logins may still work. See chunk 07.
+> certificate login fails at this stage, while CyberArk password logins may still work. See chunk 07, Stage 5.
 
 ## Done when
 
