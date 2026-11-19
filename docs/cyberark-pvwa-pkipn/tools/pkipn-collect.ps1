@@ -83,7 +83,7 @@ wevtutil epl System (Join-Path $out 'schannel.evtx') "/q:*[System[Provider[@Name
 
 # CAPI2 readable summary: chain checks done by lsass (= IIS/Schannel) in the window
 S ''; S '== Certificate checks by IIS (CAPI2, process lsass) =='
-$found = $false
+$found = $false; $bad = $false
 Get-WinEvent -FilterHashtable @{ LogName = $capiLog; StartTime = $start.AddMinutes(-1); EndTime = $end } -ErrorAction SilentlyContinue |
   Where-Object { $_.Id -in 11, 30 } | ForEach-Object {
     try { $x = [xml]$_.ToXml() } catch { return }
@@ -91,6 +91,7 @@ Get-WinEvent -FilterHashtable @{ LogName = $capiLog; StartTime = $start.AddMinut
     if (-not $aux -or $aux.GetAttribute('ProcessName') -notmatch 'lsass') { return }
     $found = $true
     $res = $x.SelectSingleNode("//*[local-name()='Result']")
+    if ($res -and $res.GetAttribute('value') -notin '', '0') { $bad = $true }
     $c1 = $x.SelectSingleNode("//*[local-name()='Certificate'][@subjectName]")
     S ("  {0} id={1} result={2} cert={3} [{4}]" -f $_.TimeCreated, $_.Id,
        $(if ($res) { $res.GetAttribute('value') } else { '' }),
@@ -98,6 +99,8 @@ Get-WinEvent -FilterHashtable @{ LogName = $capiLog; StartTime = $start.AddMinut
        $(if ($c1) { $c1.GetAttribute('fileRef') -replace '\.cer$', '' } else { '' }))
   }
 if (-not $found) { S '  (none: no certificate reached IIS, or the attempt went to another server)' }
+elseif (-not $bad) { S '  [OK] IIS trusted the certificate (stage 3 passed). If the login still failed, the cause is in PVWA or the Vault: see the IIS status above and the PVWA lines below (07 Stage 4-5).' }
+else { S '  [FAIL] IIS refused the certificate: see the result code below.' }
 S '  result 0 = OK | 800B0109 = untrusted root (see 02 Step 2/3) | 80092013 = revocation offline (02 Step 4) | 800B0101 = expired'
 
 # Failed Request Tracing files written during the window
