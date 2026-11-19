@@ -15,7 +15,7 @@ root (deploy it by GPO). This is unrelated to the user's external certificate.
 
 ## Step 2 — Log in with the certificate
 
-1. 🖱 On the sign-in page, choose the PKIPN option (chunk 04 display name).
+1. 🖱 On the sign-in page, choose the PKIPN option ([chunk 04](04-pvwa-pkipn-method.md) display name).
 2. 🖱 The browser asks you to **select a certificate**. Pick the external-CA login certificate. For a
    smart card, enter the PIN.
 3. 🖱 Use a fresh **InPrivate / Incognito** window for each attempt. Browsers remember the chosen
@@ -37,7 +37,7 @@ root (deploy it by GPO). This is unrelated to the user's external certificate.
 
 | Test | Expected |
 |---|---|
-| A certificate from another CA (e.g. internal-CA user cert) | Refused, if issuer restriction (chunk 04 Step 5) is on |
+| A certificate from another CA (e.g. internal-CA user cert) | Refused, if issuer restriction ([chunk 04](04-pvwa-pkipn-method.md) Step 5) is on |
 | A user whose UPN has no Vault user | Refused with "user not found" |
 | Cancel the certificate prompt | `403.7`, no login |
 

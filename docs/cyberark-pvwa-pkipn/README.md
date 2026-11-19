@@ -12,7 +12,7 @@ instead of a password.
 | Your situation | Do this |
 |---|---|
 | **It was set up before (maybe by someone else) and doesn't work** | 1. [08 — Check an existing setup](08-check-existing-setup.md) (tick-box list) → 2. fix what fails → 3. [06 — Test](06-test.md). Stuck? [07 — Troubleshooting](07-troubleshooting.md) and [09 — Debug logging](09-debug-logging.md) |
-| **New setup** | Chunks 01 → 06 in order |
+| **New setup** | Chunks [01](01-user-certificate.md) → [06](06-test.md) in order |
 | **One login just failed and you want to know why** | Run [`tools/pkipn-collect.ps1`](tools/pkipn-collect.ps1) (09), then [07](07-troubleshooting.md) |
 
 ## Five words you need
@@ -73,12 +73,14 @@ Tools (run on each PVWA server, as Administrator; neither changes anything):
 
 - [ ] Admin access to **every** PVWA server (each one is set up separately)
 - [ ] A CyberArk admin login to PVWA (Administration ► Options)
-- [ ] One test user, their certificate as a **public** `.cer` file (chunk 01), and a workstation
+- [ ] One test user, their certificate as a **public** `.cer` file ([chunk 01](01-user-certificate.md)), and a workstation
 - [ ] The external CA's root and intermediate certificates (`.cer`)
 - [ ] The CyberArk 14.6 page open:
       [PKI authentication (Personal Certificate) for the PVWA](https://docs.cyberark.com/pam-self-hosted/14.6/en/content/pas%20inst/pki-authentication-personal-certificate.htm).
       Lines marked 📋 must be copied from it word for word.
 - [ ] A change window: some steps need `iisreset` or a reboot
+
+**Cross-references** like "02 Step 3" mean *file 02, Step 3*.
 
 🖱 = click in a window. ⌨ = type a command (on the PVWA server, as Administrator, unless stated).
 **Expected:** = what you should see. If you don't see it, stop and go to that chunk's *If it fails*.

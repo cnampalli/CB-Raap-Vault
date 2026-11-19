@@ -1,6 +1,6 @@
 # 02 — PVWA server: trust the external CA
 
-**Who:** Windows admin, on **every** PVWA server · **Needs:** `user.cer` (chunk 01), the external
+**Who:** Windows admin, on **every** PVWA server · **Needs:** `user.cer` ([chunk 01](01-user-certificate.md)), the external
 root and issuing-CA `.cer` files · **Gives:** IIS on the PVWA server accepts the user's certificate
 
 **In short:** IIS checks the user's certificate using the **computer's** certificate stores

@@ -18,7 +18,7 @@
 `C:\inetpub\wwwroot\PasswordVault\web.config`) to `web.config.bak-<date>`.
 
 Edit **`PasswordVault\web.config`**, the application's own file that IIS loads. Some installs also
-have copies under `Bin` or `Env`; IIS doesn't read those. The diagnostic script (chunk 08 Step 0) lists
+have copies under `Bin` or `Env`; IIS doesn't read those. The diagnostic script ([chunk 08](08-check-existing-setup.md) Step 0) lists
 which exist and their PKI lines.
 
 ## Step 2 — Put the PKIPN module in place (each PVWA server)
@@ -56,7 +56,7 @@ after a refresh.
 🖱 **Administration** ► **Options** → **General** → **ValidatePKICertificate** = **Yes** → **Apply**.
 
 This is off by default. With it on, PVWA also refuses certificates that are self-signed, are CA
-certificates, or lack a suitable key usage / EKU. Chunk 01 already checked these.
+certificates, or lack a suitable key usage / EKU. [Chunk 01](01-user-certificate.md) already checked these.
 
 ## Step 5 — Restrict which CA may issue login certificates (optional, recommended)
 
@@ -65,7 +65,7 @@ including the internal CA and every public root in Windows. Limit it to the exte
 
 - 🖱 In `PasswordVault\web.config` → `<appSettings>` → add the issuer value from the 14.6 page
   section **"Validate the certificate issuer for PKI and PKIPN authentication"**. 📋 Copy the key name
-  from that page. The value is the issuing CA's name, taken from `user.cer`'s **Issuer** (chunk 01).
+  from that page. The value is the issuing CA's name, taken from `user.cer`'s **Issuer** ([chunk 01](01-user-certificate.md)).
 - ⌨ `iisreset`
 
 ## Done when

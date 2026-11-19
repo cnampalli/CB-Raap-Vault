@@ -9,7 +9,7 @@ Most of Part A is checked for you by the diagnostic script, so start with that.
 
 ## Step 0 — Run the diagnostic script
 
-1. 🖱 Copy `tools\pkipn-diagnose.ps1` and the test user's `user.cer` (chunk 01) to `C:\temp` on the
+1. 🖱 Copy `tools\pkipn-diagnose.ps1` and the test user's `user.cer` ([chunk 01](01-user-certificate.md)) to `C:\temp` on the
    PVWA server.
 2. ⌨ Open **PowerShell as Administrator**, then:
    ```powershell

@@ -1,6 +1,6 @@
 # 03 — IIS: ask for client certificates
 
-**Who:** Windows admin, on **every** PVWA server · **Needs:** chunk 02 done
+**Who:** Windows admin, on **every** PVWA server · **Needs:** [chunk 02](02-pvwa-server-trust.md) done
 **Gives:** the browser is asked for a certificate on the PKIPN login, and IIS accepts it
 
 **In short:** check the HTTPS binding, set *Require client certificate* on the PKI login folder only,
@@ -26,7 +26,7 @@ For the PVWA's `0.0.0.0:443` (or `IP:443` / `hostname:443`) entry, note:
 
 1. 🖱 **IIS Manager** → *Sites* → the PVWA site (e.g. *Default Web Site*) → **PasswordVault** →
    expand down to the PKI authentication folder. Community guides name **`auth` → `pki`**. If an
-   `auth` → `pkipn` folder also exists, set both. The diagnostic script (chunk 08 Step 0) lists the folders
+   `auth` → `pkipn` folder also exists, set both. The diagnostic script ([chunk 08](08-check-existing-setup.md) Step 0) lists the folders
    that exist on your server and their current setting.
 2. 🖱 Select that folder → **SSL Settings** → tick **Require SSL** → **Client certificates:
    Require** → **Apply**.
@@ -61,7 +61,7 @@ Pick **one**:
 
 | You see | Cause | Fix |
 |---|---|---|
-| IIS Manager, opening **SSL Settings**: `Only one <configSections> element allowed. It must be the first child element of the root <configuration> element` (file `PasswordVault\web.config`) | Something was pasted **above** `<configSections>`, or a second `<configSections>` was added. Often a `<system.net><defaultProxy>` proxy stanza. PVWA itself probably shows **500.19** too | Back up the file. Make `<configSections>` the first child of `<configuration>`, with only one block. Move or delete the pasted stanza. A web.config proxy is **not** needed: revocation uses the `netsh winhttp` proxy (chunk 02). Check with ⌨ `[xml](Get-Content <path>\web.config -Raw)`, then `iisreset` |
+| IIS Manager, opening **SSL Settings**: `Only one <configSections> element allowed. It must be the first child element of the root <configuration> element` (file `PasswordVault\web.config`) | Something was pasted **above** `<configSections>`, or a second `<configSections>` was added. Often a `<system.net><defaultProxy>` proxy stanza. PVWA itself probably shows **500.19** too | Back up the file. Make `<configSections>` the first child of `<configuration>`, with only one block. Move or delete the pasted stanza. A web.config proxy is **not** needed: revocation uses the `netsh winhttp` proxy ([chunk 02](02-pvwa-server-trust.md)). Check with ⌨ `[xml](Get-Content <path>\web.config -Raw)`, then `iisreset` |
 | Every PVWA page asks for a certificate | *Require* set on the site or `PasswordVault`, not only the PKI folder | Set those back to **Ignore** (Step 2) |
 
 ## Done when
