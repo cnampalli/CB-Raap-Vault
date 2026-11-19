@@ -77,6 +77,37 @@ the 14.6 page shows the same name. Use this when changing to UPN names (A) isn't
 > (typically `PVWAGWUser`). If that account is locked or its credential file is stale, every
 > certificate login fails at this stage, while CyberArk password logins may still work. See [chunk 07](07-troubleshooting.md), Stage 5.
 
+## Step 4 — A local Vault user works, the LDAP user doesn't
+
+That proves the certificate, IIS and PVWA are fine. What's left is the Vault finding the user in AD.
+
+1. 🖱 **Delete or rename the local test user first.** While a Vault user with that name exists, the
+   Vault logs it in and never asks AD, so you're not testing LDAP at all.
+2. ⌨ **AD has an account with exactly the certificate's UPN.** Each certificate has its own UPN
+   (a test certificate may say `jdoe.test@…`, not `jdoe@…`). Use the Principal Name of the
+   certificate the browser **sent**:
+   ```powershell
+   Get-ADUser -Filter "userPrincipalName -eq '<UPN from that certificate>'" | fl SamAccountName, UserPrincipalName, Enabled, DistinguishedName
+   ```
+   **Expected:** exactly one, enabled.
+3. 🖱 **Password test, through LDAP.** On the PVWA sign-in page choose **LDAP** and log in with the
+   **UPN** as the user name and the AD password.
+   - **Fails with "user not found" / "authentication failure":** the Vault can't find the user by UPN.
+     Check, in *Administration* ► *LDAP Integration*:
+     - the **directory** points at the domain controllers of the domain the account is in, and its
+       base context includes the account's `DistinguishedName`;
+     - a **mapping** covers that branch, its *UserLogonName* is `userPrincipalName`, and the user is
+       a member of the AD group(s) the mapping is based on (if it maps by group);
+     - other LDAP users can log in at all (if none can, the Vault's LDAP connection itself is down).
+   - **Works:** the Vault user now exists, created from AD. Go to 4.
+4. 🖱 **Certificate test again.** If the LDAP password login worked but the certificate login still
+   says *Authentication failure*, the user exists but isn't allowed to log in by certificate. Open
+   the **local test user that worked** and the **LDAP-created user** side by side (PVWA → *Users*),
+   and compare *Authentication method* and the other logon settings. Make the LDAP user, and the
+   mapping that creates LDAP users, match the working one. 📋 Check the allowed values on the 14.6 page.
+5. ⌨ Each failure leaves the reason in the Vault's `ITALog.log`, on the line before `ITATS004E`
+   (09 section 5).
+
 ## Done when
 
 - [ ] Vault user name = certificate Principal Name for the test user
