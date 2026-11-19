@@ -122,6 +122,7 @@ if ($bad) {
     Out-R ("       issuer: {0}" -f $b.Issuer)
     $where = @($phys.Keys | Where-Object { Test-Path (Join-Path $phys[$_] $b.Thumbprint) })
     Out-R ("       stored in: {0}" -f $(if ($where) { $where -join '; ' } else { 'unknown physical store' }))
+    if ($where -match 'GroupPolicy') { Out-R '       -> find the GPO: gpresult /scope computer /h C:\temp\gp.html (Public Key Policies > Trusted Root)' }
     $inCA = Get-ChildItem Cert:\LocalMachine\CA | Where-Object { $_.Thumbprint -eq $b.Thumbprint }
     Out-R ("       also in Intermediate CAs: {0}" -f $(if ($inCA) { 'yes' } else { 'no (import it there before removing from Root)' }))
     $parent = Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Subject -eq $b.Issuer -and $_.Subject -eq $_.Issuer }

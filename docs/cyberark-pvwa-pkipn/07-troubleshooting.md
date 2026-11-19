@@ -76,6 +76,9 @@ the **internal** CA's issuing CA, imported with the PVWA web certificate.
    ```
    If it's in **GroupPolicy** or **Enterprise**, deleting it locally won't last: the next `gpupdate`
    puts it back. Have the GPO / AD owner move it to *Intermediate Certification Authorities* there.
+   ⌨ `gpresult /scope computer /h C:\temp\gp.html`, then open the file → *Public Key Policies* →
+   *Trusted Root Certification Authorities*: it names the **Winning GPO**. Until it's fixed, use
+   "Can't move it" below.
 2. ⌨ Check its own root is in Trusted Root (report: `its own root in Root: yes`). A common mix-up
    is **swapped** internal CAs: the sub-CA in *Trusted Root* and the internal root in *Intermediate*
    (report: `WARN Self-signed (root) cert only in Intermediate CAs`). Then **first** import that root
