@@ -66,6 +66,12 @@ including the internal CA and every public root in Windows. Limit it to the exte
 - 🖱 In `PasswordVault\web.config` → `<appSettings>` → add the issuer value from the 14.6 page
   section **"Validate the certificate issuer for PKI and PKIPN authentication"**. 📋 Copy the key name
   from that page. The value is the issuing CA's name, taken from `user.cer`'s **Issuer** ([chunk 01](01-user-certificate.md)).
+- ⌨ Get the Issuer **exactly** as Windows formats it, and copy-paste it; don't retype it:
+  ```powershell
+  (New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 'C:\temp\user.cer').Issuer
+  ```
+  Typical mismatch: `CN=X,OU=Y` in `web.config` versus `CN=X, OU=Y` (a space after each comma) in the
+  certificate. PVWA then says *"The Client Certificate issuer is not authorized"*.
 - ⌨ `iisreset`
 
 ## Done when
