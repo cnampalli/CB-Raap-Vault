@@ -22,7 +22,8 @@ Need more detail than the summary gives? Turn on [09 — Debug logging](09-debug
 ## Step 2 — Find your line
 
 The IIS line for `/PasswordVault/api/auth/pkipn/logon` ends with `… 403 16 2148204809 12`: status,
-**sub-status**, win32 code, time taken.
+**sub-status**, win32 code, time taken. IIS log times are **UTC**; Event Viewer and PVWA logs use the
+server's local time (`tzutil /g` shows it). Compare the same attempt.
 
 | IIS shows | Stage | It means | Go to |
 |---|---|---|---|
@@ -45,6 +46,7 @@ The IIS line for `/PasswordVault/api/auth/pkipn/logon` ends with `… 403 16 214
 
 | You see | Fix |
 |---|---|
+| `403 7 64` on `/api/auth/pkipn/logon`, and the browser **did** prompt earlier | The binding asks for the certificate when the PVWA page **first opens**. If that first prompt was cancelled (or answered with another certificate), the browser keeps that choice for the whole session, and the PKIPN request arrives without one (`64` = connection dropped while IIS asked again) | Close **all** browser windows, new InPrivate window, open the PVWA, and **pick the certificate at the first prompt**. Then choose the PKIPN option |
 | No certificate prompt, `403 7` | 03 Step 2 (*Require* on the PKI folder). On Server 2022+: 03 Step 3 (TLS 1.3) |
 | No prompt, but the certificate is installed | The browser remembers an earlier choice or *Cancel*. Close **all** browser windows, new InPrivate window |
 | Certificate missing from the prompt list | No private key, or no *Client Authentication* EKU (01 Step 2–3); or a CTL on the binding (03 Step 1) |

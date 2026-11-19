@@ -54,6 +54,7 @@ S ("Attempt window: {0} -> {1} (server local time)  on {2}" -f $start, $end, $en
 # IIS log lines (IIS writes UTC times, and buffers: flush first)
 netsh http flush logbuffer | Out-Null
 S ''; S '== IIS requests in the window (near the end of each line: status substatus win32-status) =='
+S ("  NOTE: IIS log times are UTC. This server's local time is UTC{0:+0.#;-0.#}h, so local {1:HH:mm} = IIS {2:HH:mm}." -f [TimeZoneInfo]::Local.GetUtcOffset($start).TotalHours, $start, $start.ToUniversalTime())
 $fromUtc = $start.ToUniversalTime().AddMinutes(-1)
 $iisOut = Join-Path $out 'iis-lines.txt'
 $iisLines = New-Object System.Collections.Generic.List[string]
