@@ -111,6 +111,7 @@ Check the PVWA logs, and `ITALog.log` on the Vault (09 section 5).
 
 | Cause | Fix |
 |---|---|
+| PVWA says **"Authentication failure for the user [<UPN>]"** (the Vault's `ITATS004E`) | The Vault refused this user. PVWA and IIS are fine. The reason is in the Vault's `ITALog.log` on the line just before `ITATS004E`: user not found, wrong authentication method, suspended, or not allowed from PVWA | Read `ITALog.log` (09 section 5). Check the UPN in the message is exactly the AD `userPrincipalName` (watch for typos such as `.ai` vs `.au`). Then 05 Steps 1–3 and 08 B5–B11 |
 | "User not found": the Vault name is `jdoe` but the certificate says `jdoe@corp…` | 05 Step 2 |
 | LDAP user can't be created: the directory mapping doesn't cover the user's domain or branch | 05 Step 2; 08 B6–B7 |
 | User disabled, suspended, expired, or not allowed through PVWA | 05 Step 3 |
