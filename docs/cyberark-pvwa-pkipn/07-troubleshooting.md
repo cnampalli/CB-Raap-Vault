@@ -76,8 +76,14 @@ the **internal** CA's issuing CA, imported with the PVWA web certificate.
    ```
    If it's in **GroupPolicy** or **Enterprise**, deleting it locally won't last: the next `gpupdate`
    puts it back. Have the GPO / AD owner move it to *Intermediate Certification Authorities* there.
-2. ⌨ Check its own root is in Trusted Root (report: `its own root in Root: yes`). If not, import that
-   root to `LocalMachine\Root` first, or the PVWA web certificate's chain breaks.
+2. ⌨ Check its own root is in Trusted Root (report: `its own root in Root: yes`). A common mix-up
+   is **swapped** internal CAs: the sub-CA in *Trusted Root* and the internal root in *Intermediate*
+   (report: `WARN Self-signed (root) cert only in Intermediate CAs`). Then **first** import that root
+   into `LocalMachine\Root`, **then** move the sub-CA. In that order the PVWA web certificate's chain
+   never breaks. Check it afterwards: ⌨ `certutil -verifystore MY <binding cert hash>` must end at the
+   internal root with `-verifystore command completed successfully`. If the swap shows on every
+   domain server, the CA certs were probably published to AD into the wrong containers
+   (`certutil -dspublish … RootCA` vs `SubCA`): the AD CS admin fixes it there.
 3. ⌨ Move it (LocalMachine store; PowerShell as Administrator):
    ```powershell
    $t = '<thumbprint>'

@@ -130,6 +130,12 @@ if ($bad) {
   Out-R '  Fix: 07-troubleshooting.md, "403.16 + 2148204809", cause (3). Reboot afterwards.'
 }
 else { Res 'OK' 'Only self-signed certificates in LocalMachine\Root' }
+$rootsInCA = @(Get-ChildItem Cert:\LocalMachine\CA | Where-Object { $_.Subject -eq $_.Issuer -and $_.Subject -ne 'CN=Root Agency' })
+foreach ($r in $rootsInCA) {
+  $alsoRoot = Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Thumbprint -eq $r.Thumbprint }
+  if ($alsoRoot) { Out-R ("  [INFO] Self-signed cert in Intermediate CAs, also in Root (harmless): {0}" -f $r.Subject) }
+  else { Res 'WARN' ("Self-signed (root) cert only in Intermediate CAs, NOT in Root - chains to it are untrusted: {0} [{1}]. Import it to Root." -f $r.Subject, $r.Thumbprint) }
+}
 
 Head 'STAGE 3 - Schannel client-auth trust mode and Client Authentication Issuers store (403.16 0x800B0109)'
 $sch = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL' -ErrorAction SilentlyContinue
