@@ -65,6 +65,7 @@ Browser ──► IIS on the PVWA server ──► PVWA (PKI / PKIPN) ──► 
 | 08 | [Check an existing setup](08-check-existing-setup.md) | Windows + CyberArk admin |
 | 09 | [Debug logging](09-debug-logging.md) | Windows admin |
 | 10 | [Strong certificate mapping (KB5014754) and PKIPN](10-strong-mapping.md) | Windows + AD + CyberArk admin |
+| 11 | [Choosing a future-proof certificate login (analysis)](11-certificate-login-options.md) | Security architect + admins |
 
 Tools (run on each PVWA server, as Administrator; neither changes anything):
 - [`tools/pkipn-diagnose.ps1`](tools/pkipn-diagnose.ps1): checks the configuration, `[OK]`/`[WARN]`/`[FAIL]` per item.

@@ -16,6 +16,11 @@
       strings (Issuer+Serial, SKI)? Which AD account has them in altSecurityIdentities, and is that
       the same account PKIPN picks from the certificate's UPN?
 
+  -Part Module (on a PVWA server)
+      Sizes the "custom authentication module" option: lists the public types, base classes,
+      interfaces and methods of CyberArk.Authentication.CustomPKIPN.dll (reflection only, nothing is
+      executed). That is the extension point a custom module would implement.
+
   -Part Dc    (any machine; needs rights to read the Security/System logs of the domain controllers)
       After a PKIPN login: did any DC see a certificate (PKINIT) logon for that user, or log a
       KB5014754 strong-mapping event? If PVWA used Windows mapping, it would show here.
@@ -28,7 +33,7 @@
   powershell -ExecutionPolicy Bypass -File .\strongmap-evidence.ps1 -Part Dc -SamAccountName ctest -SinceMinutes 30
 #>
 param(
-  [ValidateSet('Pvwa', 'Cert', 'Dc')][string[]]$Part = @('Pvwa'),
+  [ValidateSet('Pvwa', 'Cert', 'Dc', 'Module')][string[]]$Part = @('Pvwa'),
   [string]$UserCert,
   [string]$PvwaRoot = 'C:\inetpub\wwwroot\PasswordVault',
   [string]$SiteName = 'Default Web Site',
@@ -182,6 +187,38 @@ if ($Part -contains 'Cert') {
       }
     } catch { Res 'FAIL' "AD query failed: $($_.Exception.Message). Give -SearchRoot 'GC://<forest>' or 'LDAP://<dc>/<base DN>'." }
   }
+}
+
+# =============================================================================== PART MODULE
+if ($Part -contains 'Module') {
+  Head 'PART MODULE - The custom authentication extension point (reflection only)'
+  $bin = Join-Path $PvwaRoot 'Bin'
+  $resolver = [ResolveEventHandler]{
+    param($sender, $e)
+    $n = (New-Object Reflection.AssemblyName($e.Name)).Name
+    $p = Join-Path $bin "$n.dll"
+    if (Test-Path $p) { [Reflection.Assembly]::ReflectionOnlyLoadFrom($p) } else { [Reflection.Assembly]::ReflectionOnlyLoad($e.Name) }
+  }
+  [AppDomain]::CurrentDomain.add_ReflectionOnlyAssemblyResolve($resolver)
+  foreach ($name in 'CyberArk.Authentication.CustomPKIPN.dll', 'CyberArk.Authentication.PKIPN.dll') {
+    $f = Join-Path $bin $name
+    if (-not (Test-Path $f)) { Out-R "--- $name not found in Bin"; continue }
+    Out-R "--- $name  ($((Get-Item $f).Length) bytes, version $((Get-Item $f).VersionInfo.FileVersion))"
+    try {
+      $a = [AppDomain]::CurrentDomain.ReflectionOnlyGetAssemblies() | Where-Object { $_.Location -eq $f } | Select-Object -First 1
+      if (-not $a) { $a = [Reflection.Assembly]::ReflectionOnlyLoadFrom($f) }
+      $types = try { $a.GetTypes() } catch [Reflection.ReflectionTypeLoadException] { $_.Exception.Types | Where-Object { $_ } }
+      foreach ($t in $types) {
+        Out-R ("  TYPE {0}" -f $t.FullName)
+        Out-R ("       base: {0}" -f $t.BaseType)
+        $ifs = try { ($t.GetInterfaces() | ForEach-Object FullName) -join ', ' } catch { '(unresolved)' }
+        Out-R ("       implements: {0}" -f $ifs)
+        try { $t.GetMethods([Reflection.BindingFlags]'Public, NonPublic, Instance, Static, DeclaredOnly') | ForEach-Object { Out-R ("       method: {0}" -f $_.ToString()) } } catch { Out-R "       methods: (unresolved: $($_.Exception.Message))" }
+      }
+    } catch { Res 'WARN' "Could not inspect ${name}: $($_.Exception.Message)" }
+  }
+  Out-R '  Read: the interface/base class above is what a custom module must implement. Small type, few'
+  Out-R '  methods = a small extension point (good for option C). Ask CyberArk whether it is a supported API.'
 }
 
 # =============================================================================== PART DC
