@@ -8,6 +8,15 @@ CloudBees CD/RO, and Ansible Automation Platform (AAP). Newest first.
 
 ---
 
+## 2026-11-17 — CyberArk PVWA PKIPN certificate login
+
+Added **`docs/cyberark-pvwa-pkipn/`**: set up and troubleshoot PVWA **PKIPN** login on CyberArk
+Self-Hosted **14.6**, where users' certificates come from an **external** CA and CyberArk's own
+certificates from an internal CA. Seven chunks (certificate check, PVWA server trust and revocation, IIS
+client certificates incl. TLS 1.3, PKIPN method, UPN-to-Vault-user mapping, end-to-end test,
+troubleshooting by stage with IIS 403 sub-statuses). Lines that must be copied verbatim from the 14.6
+CyberArk page (web.config entry, issuer key, DLL name) are marked 📋.
+
 ## 2026-11-05 — Venafi PKI runbook split into an instructions manual
 
 Split `09-venafi-pki-team-runbook.md` into **17 independent chunks** under
