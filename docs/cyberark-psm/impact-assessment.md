@@ -95,7 +95,7 @@ Per classification (identical in OFFICIAL, PROTECTED and SECRET; CND pools in OF
 | CND PSMP | PSM for SSH (Linux) | 2 | CND only | `psmp-cnd-<env>` |
 | **Subtotal** | | **12** | | 4 VIPs |
 | PTA | Privileged Threat Analytics (**mandatory**) | 1 (HA/DR per CyberArk guidance, Q24) | Security / DSOC | — |
-| Vault admin VM | Windows Server 2022, hardened; CyberArk admin tools only (3.6.14a) | 1 (*Assumed*; Q34) | CyberArk team only | — |
+| Vault admin VM | Windows Server 2022, hardened; CyberArk admin tools only; administers Vault **and DR Vault** (3.6.14a) | 1 | CyberArk team only | — |
 | HTML5 Gateway | **Optional**, decided in Phase 0 (2.1.3) | 2 | Consumers (and CND if required) | `psm-gw-<env>` (443) |
 
 **Totals across the three classifications:** 36 PSM/PSMP servers, **plus 3 PTA and 3 Vault admin VMs
@@ -612,7 +612,7 @@ See section 4 for quantities. Raise orders in Phase 0–1 so licences are instal
 | Item | Requirement |
 |---|---|
 | Purpose | The only place the CyberArk team runs Vault administration: PrivateArk Client, PARClient (remote Vault service control), Vault/DR Vault health and backup tools, CyberArk installers and scripts. No one logs on to the Vault servers interactively |
-| Count | 1 per classification (*Assumed*; a second for resilience is optional, Q34) |
+| Count | **1 per classification** (decided). It administers both the **Vault and the DR Vault** of that classification. If it is unavailable, rebuild it from automation (WP11/WP28); Vault administration waits until then |
 | Build | Windows Server 2022, hardened SOE, no internet, no email/browsing, AppLocker allow-list of admin tools only; EDR; patched monthly |
 | Access | Only by named CyberArk administrators, **through PSM** (recorded) with a ticket, using vaulted credentials. No direct RDP from user networks |
 | Network | To Vault and DR Vault on 1858 (Vault protocol) and the PARAgent remote-administration port (9022, verify 14.6); to PVWA 443; nothing else outbound except patching and logging |
@@ -866,5 +866,5 @@ records.
 | Q30 | ~~ITSM~~ Answered: **ServiceNow in each classification** (I1) |
 | Q31 | ~~Native RDP option~~ Answered: **N1** |
 | Q32 | OFFICIAL: does CND need its own 2 + 2 pools there too (assumed yes)? Sites per classification for OFFICIAL? |
-| Q34 | Vault admin VM: one per classification enough, or two for resilience? Does it also administer the DR Vault (assumed yes)? |
+| Q34 | ~~Vault admin VM count~~ Answered: **1 per classification**, administers the Vault and DR Vault |
 | Q33 | Partly answered: PSMP passes tickets to PVWA for validation; requester match supported. Still open: which ServiceNow fields/query conditions the 14.6 integration can check, and whether it can check the target CI |
