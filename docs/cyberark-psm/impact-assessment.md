@@ -228,7 +228,7 @@ debt** with an owner.
 |---|---|---|
 | A1 | Vault, DR Vault, PVWA and CPM in all three classifications are healthy and on 14.6, or will be before PSM goes live | Q3 |
 | A2 | PSM, PSMP and PTA are within the current CyberArk licence entitlement, or will be bought | Q14 |
-| A3 | PSM specs match the existing PSM-equivalent environment ("match other envs"); CyberArk's minimum is the floor (section 3.6.1) | Q22 |
+| A3 | No existing PSM to match: sizing is **CyberArk-based** (section 3.6.1), confirmed by the Phase 2 performance test | answered |
 | A4 | Privileged users: **250 PROTECTED, 200 SECRET** (90 OFFICIAL, see Q29); peak concurrent sessions sized at **2–4 per active user** (section 3.6.1) | answered |
 | A5 | PSM servers are domain-joined, in a dedicated OU with the CyberArk PSM hardening GPO | Q6 |
 | A6 | PSMP authenticates users against AD (AD Bridge) and uses PVWA MFA caching (SSH key), so SSH access inherits PVWA's smart-card authentication | Q6 |
@@ -404,11 +404,10 @@ Summary first; details follow.
   host (anti-affinity).
 - Storage and backup policy for configuration (recordings live in the Vault, not on the VM).
 
-**Sizing.** Match the specs of the existing equivalent environment (A3, Q22). CyberArk's floor for PSM
+**Sizing.** CyberArk-based (no existing PSM to match; A3). CyberArk's floor for PSM
 is **8 cores, 8 GB RAM, 80 GB system disk + 80 GB temporary workspace** (PSM system requirements).
 CyberArk's sizing tiers are 1–5, 6–30 and 31–60 concurrent sessions, and **a PSM server should not
-exceed 60 concurrent sessions** [CA, cloud sizing pages]. Proposed starting point, to confirm against the matched environment and the Phase 2
-performance test:
+exceed 60 concurrent sessions** [CA, cloud sizing pages]. Proposed build specification, confirmed by the Phase 2 performance test:
 
 | Role | vCPU | RAM | Disks | NICs | Notes |
 |---|---|---|---|---|---|
@@ -416,7 +415,7 @@ performance test:
 | PSMP (Linux) | 4 (floor) – 8 | 8 (floor) – 16 GB | 10 GB install + 40 GB temporary workspace (floor) [CA]; 80 GB proposed | 1 | Dedicated machine [CA]; text recordings |
 | PTA (Linux) | per CyberArk PTA recommended server specifications (verify 14.6 figures) | | | 1 | Minimal RHEL 8.8+/9.3+ [CA]; sized by event volume |
 | HTML5 Gateway (Linux) | per CyberArk's tiered guidance (verify 14.6 figures) [CA] | | | 1 | Only if approved; browsers need TLS 1.2 [CA] |
-| Vault admin VM (Windows) | 4 | 8–16 GB | 100 GB | 1 | Admin tools only; match the existing CyberArk admin build if one exists |
+| Vault admin VM (Windows) | 4 | 8–16 GB | 100 GB | 1 | Admin tools only |
 
 **Concurrency model** (A4, Q19):
 
@@ -875,12 +874,12 @@ Rough numbers are fine at this stage (to the nearest 50). They set the onboardin
 | Q19 | ~~Users per classification~~ Answered: 250 PROTECTED, 200 SECRET, 90 OFFICIAL |
 | Q20 | CND: number of users; reached only from CND networks? |
 | Q21 | Database and management client tools needed on PSM (and their licensing) |
-| Q22 | "Match specs to our other envs": which existing servers should the new ones copy (vCPU, RAM, disk)? For example existing PSM servers elsewhere, or the existing PVWA/CPM servers. If there is no existing PSM anywhere, the CyberArk-based sizing in 3.6.1 stands |
+| Q22 | ~~Specs to match~~ Answered: **no existing PSM; use CyberArk-based sizing** (3.6.1) |
 | Q23 | ServiceNow in SECRET: separate instance? How does PVWA reach it? CMDB quality for CI matching |
 | Q24 | ~~PTA HA~~ Answered: **single node, no HA** |
 | Q25 | Number of sites (data centres) per classification |
 | Q26 | Existing jump hosts: keep, restrict or retire after enforcement? |
-| Q27 | Teams: **more than 5** (answered; exact number TBC). Still needed: rough **account counts** per team (Attachment H) |
+| Q27 | Teams: **more than 5** (answered; exact number TBC). Account counts: **each team fills in Attachment H**; WP23 effort is confirmed from it |
 | Q28 | Load balancer platform per classification (affects health-check and drain design) |
 | Q29 | ~~OFFICIAL in scope?~~ Answered: **yes** (90 users) |
 | Q30 | ~~ITSM~~ Answered: **ServiceNow in each classification** (I1) |
