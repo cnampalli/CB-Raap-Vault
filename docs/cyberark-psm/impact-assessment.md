@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Document status** | DRAFT v0.3, for review with every workstream named in section 3.6 |
+| **Document status** | DRAFT v0.4, for review with every workstream named in section 3.6 |
 | **Date** | 2026-11-20 |
 | **Author** | CyberArk team (TBC) |
 | **Environments** | OFFICIAL, PROTECTED and SECRET (production) |
@@ -19,8 +19,11 @@
 - **TBC (Qn)** = waiting for an answer to open question *n* (section 8). *Assumed* = a working
   assumption; correct it if wrong. Effort and cost figures are **indicative** until each team confirms
   them.
-- Sizing and version statements cite CyberArk documentation (section 7). Anything not yet checked
-  against the 14.6 documentation is marked **(verify 14.6)**.
+- Sizing and version statements cite CyberArk documentation (section 7). The docs.cyberark.com pages
+  could not be opened from the authoring environment (the site's CDN returned a cached "Page not found"),
+  so CyberArk facts marked **[CA]** come from CyberArk's own pages as indexed by web search (20 Nov
+  2026). Confirm them on the live pages before baselining. Anything still unconfirmed is marked
+  **(verify 14.6)**.
 
 ---
 
@@ -105,10 +108,10 @@ are isolated from the consumer service. *Assumed:* CND pools are reached only fr
 
 | Item | Decision / recommendation |
 |---|---|
-| CyberArk version | **14.6** for every PSM, PSMP, HTML5 Gateway and PTA node. **All nodes in a load-balanced pool must run the same version** (CyberArk load-balancing guide) |
-| Windows Server for PSM | **Recommend Windows Server 2022**, if the hardened 2022 SOE is available today in all three classifications and PSM 14.6 supports it (verify 14.6). Microsoft lifecycle (checked 20 Nov 2026): **2019** mainstream ended 9 Jan 2024, extended ends **9 Jan 2029** (inside this service's life); **2022** mainstream ended 13 Oct 2026, extended ends **14 Oct 2031**; **2025** mainstream ends 13 Nov 2029, extended ends **14 Nov 2034**. 2022 is the minimum sensible uplift (security updates to 2031). **2025 is the better long-term target** (still in mainstream support) **only if** PSM 14.6 supports it and a 2025 SOE exists now; otherwise 2022 now and 2025 at the next CyberArk upgrade |
+| CyberArk version | **14.6** for every PSM, PSMP, HTML5 Gateway and PTA node (14.6 builds: PSM 14.6.0.28, PSMP 14.6.0.13 [CA]). **The same PSM version must be installed on every PSM server in a load-balanced environment** [CA] |
+| Windows Server for PSM | **Windows Server 2022.** PSM and CPM for PAM Self-Hosted are **not supported on Windows Server 2025** [CA], and the TLS 1.3 option requires PSM on Windows 2022 [CA]. Microsoft lifecycle (checked 20 Nov 2026): **2019** mainstream ended 9 Jan 2024, extended ends **9 Jan 2029** (inside this service's life); **2022** mainstream ended 13 Oct 2026, extended ends **14 Oct 2031**; 2025 extended ends 14 Nov 2034. So: uplift PSM from 2019 to **2022** now; revisit 2025 when CyberArk supports it (before 2031) |
 | Windows Server uplift feasibility | Go/no-go gate in Phase 0 (WP06): SOE availability in all three classifications, CIS/hardening baseline, AppLocker and EDR support, RDS role tested with PSM 14.6. If not feasible within the 12 months, build on 2019 and record **concession debt** with a planned uplift |
-| RHEL for PSMP / PTA / HTML5 Gateway | The newest RHEL major version that is both in the SOE and supported by the 14.6 component (verify 14.6; PSMP and PTA support matrices differ) |
+| Linux for PSMP / PTA / HTML5 Gateway | **PSMP:** RHEL 8 or 9 (all minor versions), Rocky Linux 8 [CA]; SLES 15 and Ubuntu 22.04/24.04 are also listed, and PSMP on Ubuntu (new in 14.6) needs PVWA and PTA 14.6 or later [CA]. PSMP needs a **dedicated** machine [CA]. **PTA:** minimal English install of RHEL **8.8+** or **9.3+** (Rocky/Alma at the same minimums; Oracle Linux RHCK 8.10/9.6) [CA]. Note a known issue: installation on RHEL 9.0 fails with SELinux enabled (9.1+ unaffected) [CA]. **Recommendation:** RHEL 9 (current minor) for PSMP and PTA, if the RHEL 9 SOE exists in all three classifications. **HTML5 Gateway:** Linux (Apache Guacamole-based) per CyberArk's tiered guidance [CA] |
 | RDS CAL version | Buy CALs of the **same or newer** version as the PSM operating system. Prefer the newest version available, because newer CALs also license older servers. This avoids a second CAL purchase at the next OS uplift |
 
 #### 2.1.3 HTML5 Gateway assessment (Phase 0)
@@ -131,7 +134,7 @@ classification, a VIP and certificates (WP12).
 | **PVWA *Connect* → RDP file** | User picks the account in PVWA, enters the ticket; PVWA validates it, then hands the user's **own native RDP client (mstsc)** a one-time RDP file to the PSM VIP | **Yes**, at PVWA, before the session | **Yes** (default) |
 | PVWA *Connect* → HTML5 Gateway | As above, session in the browser | Yes, at PVWA | If the gateway is approved (2.1.3) |
 | **RDP client straight to PSM** (user types a PSM *connection string* into mstsc, never visits PVWA) | PSM starts the session itself | **Not by PVWA**; whether 14.6 can prompt for or pass a ticket on this path is unconfirmed (verify 14.6) | **No**, unless verified (options N1–N4 below) |
-| Native SSH through PSMP | User's own SSH client to the PSMP VIP | Ticket prompt at PSMP when the platform requires ticketing (verify 14.6; test case) | **Yes** |
+| Native SSH through PSMP | User's own SSH client to the PSMP VIP | **Yes**: PSMP asks for the ticketing system and ticket ID and passes them to **PVWA**, which validates them before credentials are released [CA] | **Yes** |
 | Password *Show/Copy* (*Retrieve*) | — | — | Break-glass only, under check-out/check-in, dual control and a ticket |
 
 So users **do** keep their native RDP client: it's launched by PVWA after the ticket check. What is
@@ -152,12 +155,12 @@ Users keep their own SSH client and enter the ticket at PSMP. The design and the
 
 | Item | Design |
 |---|---|
-| How the user gives the ticket | PSMP prompts for a ticket when the target's platform requires ticketing (*expected*; verify 14.6 in the Phase 2 test). Fallback if 14.6 needs it in the connection string: the documented connection-string format |
-| Who validates | The **same** CyberArk ServiceNow ticketing integration and rules as PVWA (I1), so one rule set applies to RDP and SSH. Confirm in 14.6 where the validation runs for PSMP sessions and what network path it needs (Q33) |
+| How the user gives the ticket | After the user authenticates, PSMP asks for the **ticketing system name and ticket ID**; both can also be given in the PSMP connection string [CA]. Ticket IDs can't contain `( ) = ,` [CA] |
+| Who validates | **PVWA**, with the same ServiceNow integration and rules as PVWA *Connect* [CA]. So **PSMP needs a network path to PVWA** (not to ServiceNow), and one rule set covers RDP and SSH |
 | ServiceNow side | Validation logic lives in ServiceNow (2.1.5a), not in scripts on PSMP |
 | MFA | PVWA MFA caching (SSH key) so the smart-card login at PVWA covers SSH; ticket still asked per session |
 | Failure | ServiceNow unreachable or ticket invalid: session refused; emergency path as 3.6.9 |
-| **If PSMP can't enforce the ServiceNow check in 14.6** | P1. *Access request first*: user raises a request with the ticket in PVWA, it is validated there, and PSMP allows sessions only while the request is approved (test that PSMP enforces it). P2. Launch SSH from PVWA *Connect* through PSM (PSM-SSH client on the PSM server); ticket validated at PVWA, but users lose their native SSH client. P3. Ticket captured as a reason only and reconciled in Splunk (concession) |
+| Fallbacks (only if the Phase 2 test fails) | P1. Access request first in PVWA, PSMP allows sessions only while approved. P2. SSH launched from PVWA *Connect* through PSM (PSM-SSH); users lose their native SSH client. P3. Reason only, reconciled in Splunk (concession) |
 
 
 #### 2.1.5 ITSM integration options (ServiceNow and SM9)
@@ -166,8 +169,8 @@ Users keep their own SSH client and enter the ticket at PSMP. The design and the
 other options are kept below for the record.
 
 The ticketing check runs in PVWA through a ticketing-system plugin configured per platform, so
-different platforms (or classifications) can use different ITSM systems (verify 14.6 support for more
-than one ticketing system at once).
+different platforms (or classifications) can use different ITSM systems (more than one ticketing system
+can be configured; PSMP users name the system with the ticket [CA]).
 
 | Option | Description | Pros | Cons / dependencies |
 |---|---|---|---|
@@ -190,7 +193,7 @@ Yes, the rules can live in ServiceNow. Recommended pattern, keeping the CyberArk
 | ServiceNow business rules / script includes | Keep a **computed eligibility** on each Incident and Change, for example a field "CyberArk access allowed" = true only when: type and state allowed (Incident *In Progress*; Change *Implement*), now within the Change's planned window, assignment group or assignee set, CI present. Recomputed on every update, and by a scheduled job at window start and end |
 | ServiceNow ACLs | The CyberArk integration user can read only the fields it needs, including the eligibility field |
 | CyberArk ticketing integration (I1) | Queries the ticket and checks the eligibility field (plus the basic fields it supports natively). Exact query capability of the 14.6 plugin to confirm (Q33) |
-| Per-request checks that need the user or target | Matching the **requesting user** and the **target CI** needs the plugin to send them. If the standard plugin can't, either a ServiceNow **Scripted REST API** that takes ticket + user + target and returns allow/deny, called by a small **custom ticketing plugin** (I4), or accept ticket-level checks only |
+| Per-request checks that need the user or target | The ServiceNow integration can confirm that the **requester matches the person on the ticket** (since 10.6) [CA]. Matching the **target CI** needs the plugin to send the target (verify 14.6). If the standard plugin can't, either a ServiceNow **Scripted REST API** that takes ticket + user + target and returns allow/deny, called by a small **custom ticketing plugin** (I4), or accept ticket-level checks only |
 | Audit | ServiceNow logs each validation call; CyberArk stores the ticket with the session; both go to Splunk |
 
 ServiceNow-side effort is in WP16 (validation logic, ACLs, tests, three instances).
@@ -239,7 +242,7 @@ debt** with an owner.
 |---|---|---|---|---|---|
 | R1 | Up to 45 VMs across three classifications delayed by procurement or capacity | M | H | Raise the capacity request in Phase 0; build PROTECTED first | DCE / Procurement |
 | R2 | Firewall changes across many target networks take longer than planned | H | H | One consolidated firewall matrix per classification; target inventory up front; waves | Network |
-| R3 | **Capacity**: 4 PSM nodes don't cover peak concurrency (section 3.6.1) | M | H | Performance test in Phase 2; scale-out trigger agreed; specs matched to existing env | CyberArk / DCE |
+| R3 | **Capacity**: above CyberArk's 60-sessions-per-PSM ceiling, 4 consumer PSM nodes don't cover the top of the PROTECTED/SECRET estimate (section 3.6.1) | M | H | Performance test in Phase 2; scale-out trigger agreed; specs matched to existing env | CyberArk / DCE |
 | R4 | RDS CAL shortfall, or no RD Licensing server: PSM refuses sessions after the grace period | M | H | Licence model and quantities agreed in Phase 0 (section 4) | Procurement / Identity |
 | R5 | ITSM (ServiceNow / SM9) outage blocks all privileged access | M | H | Defined failure mode: deny with controlled emergency bypass (section 3.6.9), alerted | SNOW team / Security |
 | R6 | Vault storage exhausted by recordings | M | H | Sizing formula (section 3.6.12); monitoring and thresholds; archive design | CyberArk / DCE |
@@ -399,16 +402,17 @@ Summary first; details follow.
 - Storage and backup policy for configuration (recordings live in the Vault, not on the VM).
 
 **Sizing.** Match the specs of the existing equivalent environment (A3, Q22). CyberArk's floor for PSM
-is **8 cores, 8 GB RAM, 80 GB system disk + 80 GB temporary workspace** (CyberArk PSM system
-requirements). Proposed starting point, to confirm against the matched environment and the Phase 2
+is **8 cores, 8 GB RAM, 80 GB system disk + 80 GB temporary workspace** (PSM system requirements).
+CyberArk's sizing tiers are 1–5, 6–30 and 31–60 concurrent sessions, and **a PSM server should not
+exceed 60 concurrent sessions** [CA, cloud sizing pages]. Proposed starting point, to confirm against the matched environment and the Phase 2
 performance test:
 
 | Role | vCPU | RAM | Disks | NICs | Notes |
 |---|---|---|---|---|---|
 | PSM (Windows) | 8 (floor) – 16 | 16–32 GB | 80+ GB OS; 80+ GB temporary recordings (fast storage) | 1 (management/session) | Each RDP/web session runs a client process on the server; RAM is usually the limit |
-| PSMP (Linux) | 4–8 | 8–16 GB | 80 GB | 1 | Text recordings; light per session (verify 14.6 minimum) |
-| PTA (Linux) | per CyberArk PTA sizing (verify 14.6) | | | 1 | Sized by event volume |
-| HTML5 Gateway (Linux) | per CyberArk (verify 14.6) | | | 1 | Only if approved |
+| PSMP (Linux) | 4 (floor) – 8 | 8 (floor) – 16 GB | 10 GB install + 40 GB temporary workspace (floor) [CA]; 80 GB proposed | 1 | Dedicated machine [CA]; text recordings |
+| PTA (Linux) | per CyberArk PTA recommended server specifications (verify 14.6 figures) | | | 1 | Minimal RHEL 8.8+/9.3+ [CA]; sized by event volume |
+| HTML5 Gateway (Linux) | per CyberArk's tiered guidance (verify 14.6 figures) [CA] | | | 1 | Only if approved; browsers need TLS 1.2 [CA] |
 
 **Concurrency model** (A4, Q19):
 
@@ -423,9 +427,13 @@ performance test:
 | **Consumer PSM per node, N-1 (3 serving)** | **30–80** | **24–64** | **11–29** |
 | Consumer PSMP per node, N-1 | 20–55 | 16–43 | 7–20 |
 
-The upper end (80 RDP/web sessions per PSM node) is high for one Windows server. **The Phase 2
-performance test decides whether 4 nodes and the matched specs are enough**, or whether to add nodes or
-resources (R3). The scale-out trigger is above 70% of tested capacity at peak.
+**Result against CyberArk's 60-session ceiling** [CA]: with one node down, 3 consumer PSM nodes carry
+at most **180** sessions (3 × 60). PROTECTED's estimate is 90–240 and SECRET's 72–192, so **the upper
+end exceeds the 4-node pool in both**. Keeping a 70% design margin (≈ 42 sessions per node), PROTECTED
+would need up to **6–7** consumer PSM nodes and SECRET up to **5–6** at the top of the range. OFFICIAL
+(32–86) fits in 3–4. **Decision:** build 4 per classification as agreed, measure real concurrency in
+the pilot, and hold capacity and budget for **+2 PSM nodes in PROTECTED and +2 in SECRET** (R3, section 4
+contingency). The scale-out trigger is 70% of 60 sessions per node at peak.
 
 **Acceptance:** VMs delivered to spec; placement evidence; backups configured.
 
@@ -443,6 +451,7 @@ resources (R3). The scale-out trigger is above 70% of tested capacity at peak.
 | CND networks | CND PSM / PSMP VIPs | 3389 / 22 | CND sessions |
 | PSM, PSMP, PTA, HTML5 GW | Vault, DR Vault | 1858 | Vault protocol |
 | PVWA | ServiceNow | 443 | Ticket validation |
+| PSMP | PVWA | 443 | Ticket validation for SSH sessions (PSMP passes the ticket to PVWA) [CA] |
 | PSM, PSMP | Domain controllers | DNS, Kerberos, LDAP(S), SMB as required | Domain membership, AD Bridge |
 | PSM, PSMP, Vault, PTA | Cribl workers | syslog (TLS preferred) / forwarder ports | Logging |
 | AD domain controllers / SIEM | PTA | per PTA design | Events for analytics |
@@ -471,7 +480,7 @@ resources (R3). The scale-out trigger is above 70% of tested capacity at peak.
 | PSMP host keys | All PSMP nodes in a pool present the **same SSH host key**, so users don't get host-key warnings when the LB picks a different node |
 | Certificates | PSM RDP certificate on each node includes the VIP FQDN; HTML5 Gateway certificate on the VIP name |
 | Versions | All nodes in a pool on the same CyberArk version (upgrade procedure, section 5.6) |
-| CyberArk configuration | PSM pool configured as described in CyberArk's "Installing PSM in a load-balancing environment" (verify 14.6 details, e.g. PSM server ID and VIP address in PVWA) |
+| CyberArk configuration | Per CyberArk's *Install PSM in a Load-Balancing Environment*: an external load balancer presents the PSM servers as one address; CyberArk recommends **DNS load balancing and SSL pass-through** between LB and nodes [CA]. Each PSM server keeps its own server ID (`PSMServer`, then `PSM-<computer name>`), and platforms reference the PSM server ID [CA]. **Live monitoring** uses the PSMAdminConnect user of the node where the session runs, so monitoring must reach that specific node, not the VIP [CA] |
 
 **Acceptance:** failover, drain and site-loss tests passed (section 5.3).
 
@@ -631,7 +640,7 @@ See section 4 for quantities. Raise orders in Phase 0–1 so licences are instal
 | Third-party support | CyberArk Professional Services or partner (design review, PTA, ticketing), if engaged (Q14) | TBC | TBC |
 | Penetration test | Independent test of new components | 3 environments | TBC |
 | GFX | Meaning to confirm (Q13) | — | TBC |
-| Contingency | Suggest 15% for scale-out nodes (R3) and onboarding volume (R18) | — | TBC |
+| Contingency | Up to **4 extra PSM nodes** (+2 PROTECTED, +2 SECRET: VMs and Windows Server licences; VIPs unchanged) for R3; 15% for onboarding volume (R18) | — | TBC |
 
 ---
 
@@ -789,6 +798,10 @@ records.
 - CyberArk: [PSM system requirements](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20sysreq/system%20requirements%20-%20psm.htm)
 - CyberArk: [Installing PSM in a load-balancing environment](https://docs.cyberark.com/pam-self-hosted-legacy/latest/en/content/pas%20inst/installing-psm-in-a-load-balancing-environment.htm)
 - CyberArk: [ServiceNow ticketing integration](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/ticketingintegrationservicenow.htm)
+- CyberArk: [PSM for SSH system requirements](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20sysreq/system%20requirements%20-%20psmp.htm); [Recommended server specifications](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20sysreq/recommended%20server%20specifications.htm); [PSM compatibility](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20sysreq/psm-compatibility.htm); [AWS](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20cloud/aws-system-requirements.htm) and [Azure](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20cloud/azure-system-requirements.htm) system requirements (session tiers, 60-session ceiling); [Version 14.6 what's new](https://docs.cyberark.com/pam-self-hosted/latest/en/content/release%20notes/rn-whatsnew14-6.htm); [Known issues](https://docs.cyberark.com/pam-self-hosted/latest/en/content/release%20notes/rn-knownissues-general.htm)
+- CyberArk: [Integrate PSM for SSH with enterprise ticketing systems](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/psmp-configureticketing.htm); [Connect through PSM for SSH](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/psso-pmsp.htm); [Configure dual control with ticketing](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/configuring-dual-control-together-with-ticketing-integration.htm); [Version 10.6 what's new](https://docs.cyberark.com/pam-self-hosted/latest/en/content/release%20notes/rn-whatsnew10-6.htm) (requester match)
+- CyberArk: [Install PSM HTML5 Gateway](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/install_psm_html5.htm); [Install multiple PSM servers](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/optional-installing-multiple-psm-servers.htm)
+- Microsoft: [Windows Server 2019](https://learn.microsoft.com/en-us/lifecycle/products/windows-server-2019), [2022](https://learn.microsoft.com/en-us/lifecycle/products/windows-server-2022), [2025](https://learn.microsoft.com/en-us/lifecycle/products/windows-server-2025) lifecycle pages
 - CyberArk: [Integrating with SIEM applications](https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/integrating-with-siem-applications.htm)
 - Security Services PSD project kick-off notes, 9 November 2026 (internal; SIEM path CyberArk → Cribl → Splunk/DSOC)
 - `docs/cyberark-pvwa-pkipn/` in this repository
@@ -835,4 +848,4 @@ records.
 | Q30 | ~~ITSM~~ Answered: **ServiceNow in each classification** (I1) |
 | Q31 | ~~Native RDP option~~ Answered: **N1** |
 | Q32 | OFFICIAL: does CND need its own 2 + 2 pools there too (assumed yes)? Sites per classification for OFFICIAL? |
-| Q33 | CyberArk 14.6 ServiceNow integration: which fields and query conditions it can check; whether it sends the requesting user and target; where validation runs for PSMP sessions (network path to ServiceNow). Confirm with CyberArk / in the Phase 2 test |
+| Q33 | Partly answered: PSMP passes tickets to PVWA for validation; requester match supported. Still open: which ServiceNow fields/query conditions the 14.6 integration can check, and whether it can check the target CI |
