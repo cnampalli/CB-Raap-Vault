@@ -774,7 +774,7 @@ Onboarding scales with the inventory (unit rates below).
 non-standard applications × 0.75 d = 15 d, plus target owner verification of 1–2 d per team.
 
 **Critical path:** WP01 → WP02 → WP06 (OS gate) → WP05 (VMs) → WP12/WP13 (build) → WP26 (testing in
-PROTECTED) → SECRET build → WP23 (onboarding waves) → WP25 (enforcement).
+PROTECTED) → SECRET and OFFICIAL builds → WP23 (onboarding waves) → WP25 (enforcement).
 
 ---
 
