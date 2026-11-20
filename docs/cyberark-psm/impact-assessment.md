@@ -120,16 +120,52 @@ are isolated from the consumer service. *Assumed:* CND pools are reached only fr
 Decision owner: CyberArk architect and Security, end of Phase 0. The cost is 2 Linux nodes per
 classification, a VIP and certificates (WP12).
 
-#### 2.1.4 Access methods
+#### 2.1.4 Access methods and "native RDP"
 
-| Method | In scope | Ticketing (ServiceNow) |
-|---|---|---|
-| PVWA *Connect* → PSM (RDP file or HTML5) | **Yes** | Enforced at PVWA |
-| Native SSH through PSMP (`user@account@target@psmp` style) | **Yes** | Ticket captured at PSMP connection (test case; verify 14.6) |
-| Native RDP client direct to PSM (PSM *connection string* / "RDP to PSM") | **No**: can't enforce ticketing | Blocked: not offered to users; PSM accepts sessions only as launched by PVWA |
-| Password *Show/Copy* (*Retrieve*) for in-scope accounts | **No** for end users | Only for break-glass, under check-out/check-in, dual control and a ticket |
+"Native RDP" means two different things, and only one of them skips ticketing:
 
-#### 2.1.5 Targets and onboarding in scope
+| Method | What happens | Ticket checked? | In scope |
+|---|---|---|---|
+| **PVWA *Connect* → RDP file** | User picks the account in PVWA, enters the ticket; PVWA validates it, then hands the user's **own native RDP client (mstsc)** a one-time RDP file to the PSM VIP | **Yes**, at PVWA, before the session | **Yes** (default) |
+| PVWA *Connect* → HTML5 Gateway | As above, session in the browser | Yes, at PVWA | If the gateway is approved (2.1.3) |
+| **RDP client straight to PSM** (user types a PSM *connection string* into mstsc, never visits PVWA) | PSM starts the session itself | **Not by PVWA**; whether 14.6 can prompt for or pass a ticket on this path is unconfirmed (verify 14.6) | **No**, unless verified (options N1–N4 below) |
+| Native SSH through PSMP | User's own SSH client to the PSMP VIP | Ticket prompt at PSMP when the platform requires ticketing (verify 14.6; test case) | **Yes** |
+| Password *Show/Copy* (*Retrieve*) | — | — | Break-glass only, under check-out/check-in, dual control and a ticket |
+
+So users **do** keep their native RDP client: it's launched by PVWA after the ticket check. What is
+excluded is starting a PSM session from mstsc without going through PVWA.
+
+**"Validate in PVWA first, then connect natively" options** (to test in Phase 2):
+
+| Option | How | Ticket enforced | Notes |
+|---|---|---|---|
+| N1. PVWA *Connect* with RDP file (recommended) | As above | Every session | Native client; one extra step (PVWA). No extra build |
+| N2. Access request, then native connection string | User submits an access request in PVWA with a ticket (dual-control/request workflow); once approved for a time window, connects with mstsc and the connection string | Once per request window, if PSM honours the approved request on the connection-string path (verify 14.6) | Fewer PVWA visits for long jobs. **Test before relying on it**; if PSM does not enforce the request on that path, N2 is not acceptable |
+| N3. Ticket in the connection string / PSM prompt | User supplies the ticket on the direct path, validated by the same ticketing plugin | Every session | Only if 14.6 supports it on the RDP connection-string path (verify 14.6) |
+| N4. Allow the direct path with detection only | Direct connection-string sessions allowed; Splunk flags sessions without a ticket for review | After the fact | Doesn't meet "ticket first"; record as a concession if chosen |
+
+If N2 and N3 can't be proven, keep the direct connection-string path **disabled** (PSM accepts only
+PVWA-launched sessions) and use N1.
+
+#### 2.1.5 ITSM integration options (ServiceNow and SM9)
+
+The ticketing check runs in PVWA through a ticketing-system plugin configured per platform, so
+different platforms (or classifications) can use different ITSM systems (verify 14.6 support for more
+than one ticketing system at once).
+
+| Option | Description | Pros | Cons / dependencies |
+|---|---|---|---|
+| **I1. ServiceNow, CyberArk's ServiceNow integration** | PVWA plugin queries ServiceNow (Incident/Change) over its API at connect time: exists, type, state, window, assignment, CI | Vendor-supported; rich validation; matches the user's answer | PVWA in each classification must reach a ServiceNow instance at that classification (Q23) |
+| **I2. SM9 (OpenText/Micro Focus Service Manager), CyberArk's HP Service Manager integration** | CyberArk has historically shipped an HP Service Manager (HPSM) ticketing integration; SM9 is its successor line | Uses the ITSM already in place where SM9 is the system of record | **Verify** that 14.6 still ships and supports it, and for which SM9 versions/APIs (SOAP/REST). PVWA must reach SM9 |
+| **I3. Per-classification mix** | e.g. ServiceNow where available, SM9 where it is the system of record (often the higher classification) | Each environment uses its own ITSM | Two integrations to build, test and support |
+| **I4. Custom ticketing plugin / broker** | CyberArk's ticketing SDK (custom plugin), or a small internal broker API that answers "is ticket X valid for user Y and target Z?" by querying ServiceNow or SM9 | Works when PVWA can't reach the ITSM directly; one interface for both ITSMs; rules under your control | Development and ownership (like custom authentication, chunk 11 of the PKIPN guide); support boundary with CyberArk |
+| **I5. ITSM-initiated access** | ServiceNow (or SM9) approves a request and calls the CyberArk REST API to grant time-boxed access (Safe membership or approved request) | Access only exists while the ticket is approved; good audit trail in the ITSM | Integration build in the ITSM; must still block sessions outside the window; CyberArk also offers ServiceNow apps for this (verify availability for Self-Hosted 14.6) |
+| **I6. Format check + after-the-fact reconciliation** | PVWA requires a ticket reference in a valid format (no live lookup); Splunk joins session data with an ITSM export daily | No live dependency on the ITSM; quick to build | Not "ticket first"; invalid tickets found only afterwards. Fallback or interim only |
+
+**Common to all options:** deny by default when the ITSM is unreachable; emergency bypass by named
+roles with dual control, always alerted (3.6.9); ticket stored with the session and sent to Splunk.
+
+#### 2.1.6 Targets and onboarding in scope
 
 | Target type | Connection | Typical connection components / plugins |
 |---|---|---|
@@ -157,7 +193,7 @@ debt** with an owner.
 | A1 | Vault, DR Vault, PVWA and CPM in both classifications are healthy and on 14.6, or will be before PSM goes live | Q3 |
 | A2 | PSM, PSMP and PTA are within the current CyberArk licence entitlement, or will be bought | Q14 |
 | A3 | PSM specs match the existing PSM-equivalent environment ("match other envs"); CyberArk's minimum is the floor (section 3.6.1) | Q22 |
-| A4 | About 250 privileged users; peak concurrent sessions sized at **2–4 per active user** (section 3.6.1) | Q19 |
+| A4 | Privileged users: **250 PROTECTED, 200 SECRET** (90 OFFICIAL, see Q29); peak concurrent sessions sized at **2–4 per active user** (section 3.6.1) | answered |
 | A5 | PSM servers are domain-joined, in a dedicated OU with the CyberArk PSM hardening GPO | Q6 |
 | A6 | PSMP authenticates users against AD (AD Bridge) and uses PVWA MFA caching (SSH key), so SSH access inherits PVWA's smart-card authentication | Q6 |
 | A7 | Each classification has its own ServiceNow instance or connector that PVWA can reach (SECRET may need a separate instance) | Q23 |
@@ -175,7 +211,7 @@ debt** with an owner.
 | R2 | Firewall changes across many target networks take longer than planned | H | H | One consolidated firewall matrix per classification; target inventory up front; waves | Network |
 | R3 | **Capacity**: 4 PSM nodes don't cover peak concurrency (section 3.6.1) | M | H | Performance test in Phase 2; scale-out trigger agreed; specs matched to existing env | CyberArk / DCE |
 | R4 | RDS CAL shortfall, or no RD Licensing server: PSM refuses sessions after the grace period | M | H | Licence model and quantities agreed in Phase 0 (section 4) | Procurement / Identity |
-| R5 | ServiceNow outage blocks all privileged access | M | H | Defined failure mode: deny with controlled emergency bypass (section 3.6.9), alerted | SNOW team / Security |
+| R5 | ITSM (ServiceNow / SM9) outage blocks all privileged access | M | H | Defined failure mode: deny with controlled emergency bypass (section 3.6.9), alerted | SNOW team / Security |
 | R6 | Vault storage exhausted by recordings | M | H | Sizing formula (section 3.6.12); monitoring and thresholds; archive design | CyberArk / DCE |
 | R7 | Hardening, AppLocker or EDR blocks PSM components or client tools | M | M | Agreed exclusions and AppLocker rules before build (WP17) | DevSecOps |
 | R8 | Windows Server 2022 SOE not ready in time | M | M | Phase 0 gate; fallback to 2019 with concession and dated uplift | Windows Platform |
@@ -215,7 +251,7 @@ debt** with an owner.
 - Non-production PSM environments (*Assumed*; Q1).
 - Changes to Vault, PVWA or CPM architecture beyond what PSM, ticketing and onboarding need (version
   alignment to 14.6 is a dependency, not part of this change).
-- Native RDP to PSM (no ticketing; section 2.1.4).
+- RDP sessions started on PSM without PVWA (connection string), unless option N2/N3 is proven (section 2.1.4).
 - Remote access from outside the classification networks.
 - Endpoint (user workstation) changes beyond publishing guides and, if needed, the RDP client setting.
 - Application changes needed to make credentials rotatable; recorded as concessions (R12).
@@ -346,15 +382,16 @@ performance test:
 
 **Concurrency model** (A4, Q19):
 
-| Input | Value |
-|---|---|
-| Privileged users | 250 (*Assumed* per classification; Q19) |
-| Active at peak (*Assumed*) | 30–40% → 75–100 users |
-| Sessions per active user | 2–4 |
-| Peak concurrent sessions | 150–400 |
-| Split PSM : PSMP (*Assumed*; confirm from target mix) | 60 : 40 → PSM 90–240, PSMP 60–160 |
-| Consumer PSM per node, N-1 (3 nodes serving) | **30–80 sessions per node** |
-| Consumer PSMP per node, N-1 | 20–55 sessions per node |
+| Input | PROTECTED | SECRET |
+|---|---|---|
+| Privileged users | 250 | 200 |
+| Active at peak (*Assumed* 30–40%) | 75–100 | 60–80 |
+| Sessions per active user | 2–4 | 2–4 |
+| Peak concurrent sessions | 150–400 | 120–320 |
+| PSM share (*Assumed* 60%; confirm from target mix) | 90–240 | 72–192 |
+| PSMP share (40%) | 60–160 | 48–128 |
+| **Consumer PSM per node, N-1 (3 serving)** | **30–80** | **24–64** |
+| Consumer PSMP per node, N-1 | 20–55 | 16–43 |
 
 The upper end (80 RDP/web sessions per PSM node) is high for one Windows server. **The Phase 2
 performance test decides whether 4 nodes and the matched specs are enough**, or whether to add nodes or
@@ -550,7 +587,7 @@ See section 4 for quantities. Raise orders in Phase 0–1 so licences are instal
 | Funding source | TBC (Q14) | — | TBC |
 | Infrastructure | VMs (compute, storage, backup) at chargeback rates | up to 30 VMs | TBC |
 | Vault storage expansion | Recordings (section 3.6.12) | per sizing | TBC |
-| RDS CALs | **Per User** CALs for every person who uses PSM, plus CND, plus 10% headroom; same or newer version than the PSM OS. Per-user CALs license a person for all RDS servers, so the same people in both classifications need one CAL each, installed on the licence servers of both environments (split packs) — confirm with Microsoft licensing | ~275 (250 + 10%) + CND users (Q19, Q20) | TBC |
+| RDS CALs | **Per User** CALs, same or newer version than the PSM OS, installed on each classification's own RD Licensing server. Separate, isolated licence servers can't share a pack, so buy per environment (confirm with Microsoft licensing): PROTECTED 250 + 10% ≈ 275; SECRET 200 + 10% = 220; plus CND users (Q20); OFFICIAL 90 + 10% ≈ 99 only if OFFICIAL is in scope (Q29) | **≈ 495** (+ CND) | TBC |
 | Windows Server CALs | Users of PSM also need Windows Server CALs (often covered by an enterprise agreement) | as above | TBC |
 | Windows Server licences | 12 PSM servers (core-based) | 12 | TBC |
 | RHEL subscriptions | PSMP (12), PTA (2), HTML5 GW (4 if approved) | 14–18 | TBC |
@@ -736,13 +773,13 @@ records.
 | Q1/Q2 | 12 per classification, 24 total: 4 PSM + 4 PSMP for consumers, 2 PSM + 2 PSMP for **CND**. Production |
 | Q3 | Design to 14.6; include upgrade/lifecycle; same version in each load-balanced pool |
 | Q4 | All target types in scope; onboarding of all accounts, platforms, Safes, CPM/reconcile, connection components, AD changes; break-glass accounts; native application credential rotation where possible |
-| Q5 | PVWA *Connect* and native PSMP SSH; no native RDP to PSM (no ticketing); HTML5 Gateway assessed; full LB design |
+| Q5 | PVWA *Connect* (launches the native RDP client after the ticket check) and native PSMP SSH; direct connection-string RDP to PSM excluded unless N2/N3 proven (2.1.4); HTML5 Gateway assessed; full LB design |
 | Q6 | Windows Server uplift from 2019 to be recommended (2022 if available today and feasible in 12 months) |
 | Q7 | Include the RDS CAL model and quantities |
 | Q8 | Full recording lifecycle; retention TBD pending Defence |
 | Q11 | CyberArk → Cribl → Splunk → DSOC, with monitoring, dashboards, alerts, use cases |
 | Q12 (part) | Ansible automation where supported |
-| — | ServiceNow ticketing fully in scope; PTA in scope; check-out/check-in for all break-glass; ~250 users, 2–4 sessions each; match specs to other environments |
+| — | ITSM ticketing fully in scope (ServiceNow and/or SM9, Q30); PTA in scope; check-out/check-in for all break-glass; ~250 users, 2–4 sessions each; match specs to other environments |
 
 ### 8.2 Still open
 
@@ -753,7 +790,7 @@ records.
 | Q13 | Meaning of "GFX" in the cost section |
 | Q14 | Funding source; CyberArk licence entitlement (PSM, PSMP, PTA); third-party support |
 | Q15 | Baseline documents to reference |
-| Q19 | Are the 250 users **per classification or in total**? Same people in both? |
+| Q19 | ~~Users per classification~~ Answered: 250 PROTECTED, 200 SECRET, 90 OFFICIAL |
 | Q20 | CND: number of users; reached only from CND networks? |
 | Q21 | Database and management client tools needed on PSM (and their licensing) |
 | Q22 | Which existing environment's specs to match, and what they are |
@@ -763,3 +800,6 @@ records.
 | Q26 | Existing jump hosts: keep, restrict or retire after enforcement? |
 | Q27 | Number of consuming teams, and approximate account counts per team (drives WP23) |
 | Q28 | Load balancer platform per classification (affects health-check and drain design) |
+| Q29 | **Is OFFICIAL in scope?** 90 users were given. If yes: server count, VIPs, CALs, onboarding and effort grow (another classification) |
+| Q30 | ITSM per classification: ServiceNow, SM9, or both? Can each classification's PVWA reach its ITSM? Choose from options I1–I6 (2.1.5) |
+| Q31 | Is "validate in PVWA, then connect natively" needed beyond PVWA *Connect* with the RDP file (options N1–N4, 2.1.4)? |
