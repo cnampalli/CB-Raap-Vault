@@ -68,6 +68,17 @@ Afterwards only that external CA can be used for certificate logins on this serv
 CA renews its issuing CA, add the new one to `ClientAuthIssuer`. Undo: `reg delete
 HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL /v ClientAuthTrustMode /f`, reboot.
 
+**More than one issuing CA.** The store can hold several. In mode 2 IIS accepts a client certificate
+whose chain contains **any** certificate in `ClientAuthIssuer`, so add each issuing CA you want to
+allow (a renewed CA certificate, a second external CA), with `certutil -addstore ClientAuthIssuer
+<file>.cer` each, then reboot. Rules:
+- Add **issuing** CAs, not their root. A root there allows every CA under it.
+- Each one still needs its root in *Trusted Root* and itself in *Intermediate*, and a reachable CRL.
+- The store applies to **every** site on this server that asks for client certificates.
+- PVWA checks the issuer again: add the same CA to the issuer setting too (04 Step 5; 📋 the
+  14.6 page says how to list several), or PVWA refuses it with *"issuer is not authorized"*.
+- Keep the list short: IIS sends these names to the browser, which only offers matching certificates.
+
 ## Step 4 — Revocation works the way IIS checks it (as SYSTEM)
 
 The external CA's CRL is on the internet. The PVWA server reaches it only through the **WinHTTP
