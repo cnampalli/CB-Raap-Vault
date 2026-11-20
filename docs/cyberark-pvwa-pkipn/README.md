@@ -64,10 +64,12 @@ Browser ──► IIS on the PVWA server ──► PVWA (PKI / PKIPN) ──► 
 | 07 | [Troubleshooting](07-troubleshooting.md) | All |
 | 08 | [Check an existing setup](08-check-existing-setup.md) | Windows + CyberArk admin |
 | 09 | [Debug logging](09-debug-logging.md) | Windows admin |
+| 10 | [Strong certificate mapping (KB5014754) and PKIPN](10-strong-mapping.md) | Windows + AD + CyberArk admin |
 
 Tools (run on each PVWA server, as Administrator; neither changes anything):
 - [`tools/pkipn-diagnose.ps1`](tools/pkipn-diagnose.ps1): checks the configuration, `[OK]`/`[WARN]`/`[FAIL]` per item.
 - [`tools/pkipn-collect.ps1`](tools/pkipn-collect.ps1): you reproduce one failed login, it collects the logs for that attempt into a zip.
+- [`tools/strongmap-evidence.ps1`](tools/strongmap-evidence.ps1): evidence for 10, whether PKIPN uses `altSecurityIdentities` strong mapping (it doesn't).
 
 ## Before you start
 
