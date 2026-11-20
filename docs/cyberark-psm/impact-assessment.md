@@ -85,7 +85,7 @@ classifications:
 
 #### 2.1.1 Server inventory
 
-Per classification (identical in OFFICIAL, PROTECTED and SECRET; CND pools in OFFICIAL *Assumed*, Q32):
+Per classification (identical in OFFICIAL, PROTECTED and SECRET; CND pools in all three, including OFFICIAL):
 
 | Pool | Role | Nodes | Users | VIP |
 |---|---|---|---|---|
@@ -94,7 +94,7 @@ Per classification (identical in OFFICIAL, PROTECTED and SECRET; CND pools in OF
 | CND PSM | PSM (Windows) | 2 | CND only | `psm-cnd-<env>` |
 | CND PSMP | PSM for SSH (Linux) | 2 | CND only | `psmp-cnd-<env>` |
 | **Subtotal** | | **12** | | 4 VIPs |
-| PTA | Privileged Threat Analytics (**mandatory**) | 1 (HA/DR per CyberArk guidance, Q24) | Security / DSOC | — |
+| PTA | Privileged Threat Analytics (**mandatory**) | 1, **no HA** (decided); recovery by rebuild from automation plus configuration backup | Security / DSOC | — |
 | Vault admin VM | Windows Server 2022, hardened; CyberArk admin tools only; administers Vault **and DR Vault** (3.6.14a) | 1 | CyberArk team only | — |
 | HTML5 Gateway | **Optional**, decided in Phase 0 (2.1.3) | 2 | Consumers (and CND if required) | `psm-gw-<env>` (443) |
 
@@ -391,7 +391,7 @@ Summary first; details follow.
 | Backup | Configuration backup for new servers | Backup scope | 3–6 d | Phase 2 |
 | Service Operations / Service Desk | Support model, KB articles, incident categories, training | Runbooks, guides | 14–21 d | Phase 5–6 |
 | Records management | Recording retention/disposal procedure | Recording design | 3–5 d | Phase 2 |
-| Consuming teams (each) | Target and account inventory, account owners, UAT, rotation tests, application local-credential analysis | Templates, onboarding waves | 3–8 d per team (Q27) | Phases 0, 4 |
+| Consuming teams (each; **more than 5 teams**, *Assumed* 6–10) | Target and account inventory (Attachment H), account owners, UAT, rotation tests, application local-credential analysis | Templates, onboarding waves | 3–8 d per team; **18–80 d in total** for 6–10 teams | Phases 0, 4 |
 | CND | Inventory for CND pools, UAT | Same as consumers | 3–5 d | Phases 0, 4 |
 | CyberArk team | Design, build, config, onboarding, testing, handover | — | 450–700 d | All |
 
@@ -826,6 +826,26 @@ records.
 
 ---
 
+### Attachment H — Account inventory template (for each consuming team)
+
+An **account** here is one privileged login that CyberArk will store, rotate and use for sessions:
+a username plus its password or SSH key **on one target**. Examples: the local `Administrator` on each
+Windows server, `root` on each Linux server, the local admin on each network device, `sa`/`sys` on each
+database, the built-in admin of each application, emergency domain admin accounts. Ten Linux servers
+with `root` each = 10 accounts. Personal day-to-day user accounts are **not** onboarded; application
+**service** accounts are out of scope unless listed separately.
+
+| Team | Target type | Number of targets | Privileged account(s) per target | Accounts (= targets × accounts per target) | Break-glass? | Can the app rotate it natively? | Client tool needed on PSM | Owner |
+|---|---|---|---|---|---|---|---|---|
+| e.g. Platform | Windows servers | 120 | local Administrator | 120 | Yes | n/a | RDP | name |
+| e.g. Platform | Linux servers | 200 | root | 200 | Yes | n/a | SSH | name |
+| e.g. Network | Switches/routers | 80 | local admin | 80 | Yes | Yes (CPM plugin) | SSH / web | name |
+| e.g. DBA | SQL Server instances | 40 | sa | 40 | Yes | Yes | SSMS | name |
+| e.g. App team | Application X | 1 | built-in admin | 1 | Yes | No (concession) | Browser | name |
+
+Rough numbers are fine at this stage (to the nearest 50). They set the onboarding effort (WP23, about
+0.05–0.15 days per account in bulk) and which platforms and connection components are needed.
+
 ## 8. Clarifications
 
 ### 8.1 Answered (20 November 2026)
@@ -855,16 +875,16 @@ records.
 | Q19 | ~~Users per classification~~ Answered: 250 PROTECTED, 200 SECRET, 90 OFFICIAL |
 | Q20 | CND: number of users; reached only from CND networks? |
 | Q21 | Database and management client tools needed on PSM (and their licensing) |
-| Q22 | Which existing environment's specs to match, and what they are |
+| Q22 | "Match specs to our other envs": which existing servers should the new ones copy (vCPU, RAM, disk)? For example existing PSM servers elsewhere, or the existing PVWA/CPM servers. If there is no existing PSM anywhere, the CyberArk-based sizing in 3.6.1 stands |
 | Q23 | ServiceNow in SECRET: separate instance? How does PVWA reach it? CMDB quality for CI matching |
-| Q24 | PTA: single node per classification acceptable, or HA/DR required? |
+| Q24 | ~~PTA HA~~ Answered: **single node, no HA** |
 | Q25 | Number of sites (data centres) per classification |
 | Q26 | Existing jump hosts: keep, restrict or retire after enforcement? |
-| Q27 | Number of consuming teams, and approximate account counts per team (drives WP23) |
+| Q27 | Teams: **more than 5** (answered; exact number TBC). Still needed: rough **account counts** per team (Attachment H) |
 | Q28 | Load balancer platform per classification (affects health-check and drain design) |
 | Q29 | ~~OFFICIAL in scope?~~ Answered: **yes** (90 users) |
 | Q30 | ~~ITSM~~ Answered: **ServiceNow in each classification** (I1) |
 | Q31 | ~~Native RDP option~~ Answered: **N1** |
-| Q32 | OFFICIAL: does CND need its own 2 + 2 pools there too (assumed yes)? Sites per classification for OFFICIAL? |
+| Q32 | ~~CND pools in OFFICIAL~~ Answered: **yes**. Still open: number of sites for OFFICIAL |
 | Q34 | ~~Vault admin VM count~~ Answered: **1 per classification**, administers the Vault and DR Vault |
 | Q33 | Partly answered: PSMP passes tickets to PVWA for validation; requester match supported. Still open: which ServiceNow fields/query conditions the 14.6 integration can check, and whether it can check the target CI |
