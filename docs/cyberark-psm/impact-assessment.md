@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Document status** | DRAFT v0.4, for review with every workstream named in section 3.6 |
+| **Document status** | DRAFT v0.5, for review with every workstream named in section 3.6 |
 | **Date** | 2026-11-20 |
 | **Author** | CyberArk team (TBC) |
 | **Environments** | OFFICIAL, PROTECTED and SECRET (production) |
@@ -43,7 +43,8 @@ classifications:
 | **PSM** (Windows, Remote Desktop Session Host) | Sessions to Windows/RDP targets, databases, web applications and other client-based targets |
 | **PSM for SSH (PSMP)** (Linux) | SSH sessions to Linux/Unix servers and network devices |
 | **PSM HTML5 Gateway** | Browser-based PSM sessions without an RDP client; **assessed** in Phase 0 (section 2.1.3) |
-| **Privileged Threat Analytics (PTA)** | Detects risky privileged activity and PSM bypass; feeds the SIEM |
+| **Privileged Threat Analytics (PTA)** | **Mandatory.** Detects risky privileged activity and PSM bypass; feeds the SIEM |
+| **Vault administration VM** | Dedicated, hardened VM per classification from which the CyberArk team administers the Vault (PrivateArk Client, PARClient and admin tools), so no one logs on to the Vault servers interactively |
 | **ServiceNow ticketing integration** | Every session or credential use needs a valid Incident or Change |
 | **SIEM integration** | CyberArk → Cribl → Splunk → DSOC: logs, dashboards, alerts, use cases |
 | **Load balancing** | Highly available PSM and PSMP pools with health checks and site distribution |
@@ -93,11 +94,13 @@ Per classification (identical in OFFICIAL, PROTECTED and SECRET; CND pools in OF
 | CND PSM | PSM (Windows) | 2 | CND only | `psm-cnd-<env>` |
 | CND PSMP | PSM for SSH (Linux) | 2 | CND only | `psmp-cnd-<env>` |
 | **Subtotal** | | **12** | | 4 VIPs |
-| PTA | Privileged Threat Analytics | 1 (*Assumed*; HA/DR per CyberArk guidance, Q24) | Security / DSOC | — |
-| HTML5 Gateway | Conditional on Phase 0 decision | 2 | Consumers (and CND if required) | `psm-gw-<env>` (443) |
+| PTA | Privileged Threat Analytics (**mandatory**) | 1 (HA/DR per CyberArk guidance, Q24) | Security / DSOC | — |
+| Vault admin VM | Windows Server 2022, hardened; CyberArk admin tools only (3.6.14a) | 1 (*Assumed*; Q34) | CyberArk team only | — |
+| HTML5 Gateway | **Optional**, decided in Phase 0 (2.1.3) | 2 | Consumers (and CND if required) | `psm-gw-<env>` (443) |
 
-**Totals across the three classifications:** 36 PSM/PSMP servers, **plus 3 PTA, plus 6 HTML5 Gateway if
-approved.** Procurement and Data Centre Engineering need to plan for **up to 45 VMs** and 12–15 VIPs.
+**Totals across the three classifications:** 36 PSM/PSMP servers, **plus 3 PTA and 3 Vault admin VMs
+(42 firm), plus 6 HTML5 Gateway if approved.** Procurement and Data Centre Engineering need to plan for
+**up to 48 VMs** (plus up to 4 scale-out PSM nodes, section 3.6.1) and 12–15 VIPs.
 OFFICIAL has fewer users (section 3.6.1): its consumer pools could be right-sized to 3 + 3 after the
 performance test; this draft keeps 4 + 4 for consistency.
 
@@ -240,7 +243,7 @@ debt** with an owner.
 
 | # | Risk | L | I | Mitigation | Owner |
 |---|---|---|---|---|---|
-| R1 | Up to 45 VMs across three classifications delayed by procurement or capacity | M | H | Raise the capacity request in Phase 0; build PROTECTED first | DCE / Procurement |
+| R1 | Up to 48 VMs across three classifications delayed by procurement or capacity | M | H | Raise the capacity request in Phase 0; build PROTECTED first | DCE / Procurement |
 | R2 | Firewall changes across many target networks take longer than planned | H | H | One consolidated firewall matrix per classification; target inventory up front; waves | Network |
 | R3 | **Capacity**: above CyberArk's 60-sessions-per-PSM ceiling, 4 consumer PSM nodes don't cover the top of the PROTECTED/SECRET estimate (section 3.6.1) | M | H | Performance test in Phase 2; scale-out trigger agreed; specs matched to existing env | CyberArk / DCE |
 | R4 | RDS CAL shortfall, or no RD Licensing server: PSM refuses sessions after the grace period | M | H | Licence model and quantities agreed in Phase 0 (section 4) | Procurement / Identity |
@@ -263,7 +266,7 @@ debt** with an owner.
 
 | # | Dependency | Owner | Needed by |
 |---|---|---|---|
-| D1 | Capacity and VMs (up to 45) to spec | DCE | Phase 1 |
+| D1 | Capacity and VMs (up to 48) to spec | DCE | Phase 1 |
 | D2 | Windows Server SOE decision (2022/2025/2019) and RHEL SOE | Windows / Linux Platform | Phase 0 gate |
 | D3 | IP addresses, DNS records, VIPs, health checks | Network | Phase 1 |
 | D4 | Firewall rules: component flows (Phase 1), target flows (per onboarding wave), bypass blocks (Phase 5) | Network | Phases 1, 4, 5 |
@@ -300,7 +303,7 @@ debt** with an owner.
 |---|---|---|
 | KD1 | 36 PSM/PSMP servers built from automation, hardened, registered to the Vault, version-aligned | Build evidence; hardening scan; pool version check |
 | KD2 | Load-balanced pools (12 VIPs, 15 with HTML5, across three classifications) with health checks and site distribution | Failover tests passed (section 5.3) |
-| KD3 | PTA deployed and integrated (Vault, PSM/PSMP, AD events, SIEM) | Detections fire in test; alerts in Splunk |
+| KD3 | PTA (mandatory) deployed and integrated (Vault, PSM/PSMP, AD events, SIEM) | Detections fire in test; alerts in Splunk |
 | KD4 | HTML5 Gateway decision, and build if approved | Decision record; tests passed |
 | KD5 | ServiceNow ticketing integration with validation rules, failure modes and bypass controls | Ticketing test cases passed |
 | KD6 | CyberArk → Cribl → Splunk → DSOC integration: sources, dashboards, alerts, use cases | Each use case fires in test |
@@ -372,7 +375,7 @@ Summary first; details follow.
 
 | Team | What you deliver | Main inputs from the CyberArk team | Effort (indicative) | When |
 |---|---|---|---|---|
-| Data Centre Engineering | Up to 45 VMs (three classifications), placement across sites, storage, backup policy | Sizing sheet, placement rules | 30–50 d | Phase 1 |
+| Data Centre Engineering | Up to 48 VMs (three classifications), placement across sites, storage, backup policy | Sizing sheet, placement rules | 30–50 d | Phase 1 |
 | Network (firewall, DNS, LB) | IPs, DNS, 12–15 VIPs with health checks, component flows, target flows per wave, bypass blocks | Flow matrix per phase | 65–105 d | Phases 1, 4, 5 |
 | Windows Platform | Windows Server SOE for PSM (2022/2025 decision), RDSH role baseline | PSM OS requirements | 14–28 d | Phase 0–1 |
 | Linux Platform | RHEL SOE for PSMP, PTA, HTML5 Gateway | Component OS requirements | 7–14 d | Phase 0–1 |
@@ -395,8 +398,8 @@ Summary first; details follow.
 #### 3.6.1 Data Centre Engineering
 
 **Deliver:**
-- VMs per classification: 4 + 2 PSM (Windows), 4 + 2 PSMP (Linux), 1 PTA (Linux), and 2 HTML5 Gateway
-  (Linux) if approved. **Up to 15 per classification, 45 in total.**
+- VMs per classification: 4 + 2 PSM (Windows), 4 + 2 PSMP (Linux), 1 PTA (Linux), 1 Vault admin VM
+  (Windows), and 2 HTML5 Gateway (Linux) if approved. **Up to 16 per classification, 48 in total.**
 - Placement: split each pool evenly across the two sites (A9); no two nodes of a 2-node pool on the same
   host (anti-affinity).
 - Storage and backup policy for configuration (recordings live in the Vault, not on the VM).
@@ -413,6 +416,7 @@ performance test:
 | PSMP (Linux) | 4 (floor) – 8 | 8 (floor) – 16 GB | 10 GB install + 40 GB temporary workspace (floor) [CA]; 80 GB proposed | 1 | Dedicated machine [CA]; text recordings |
 | PTA (Linux) | per CyberArk PTA recommended server specifications (verify 14.6 figures) | | | 1 | Minimal RHEL 8.8+/9.3+ [CA]; sized by event volume |
 | HTML5 Gateway (Linux) | per CyberArk's tiered guidance (verify 14.6 figures) [CA] | | | 1 | Only if approved; browsers need TLS 1.2 [CA] |
+| Vault admin VM (Windows) | 4 | 8–16 GB | 100 GB | 1 | Admin tools only; match the existing CyberArk admin build if one exists |
 
 **Concurrency model** (A4, Q19):
 
@@ -603,6 +607,19 @@ See section 4 for quantities. Raise orders in Phase 0–1 so licences are instal
 | Certificates | Section 3.6.7 |
 | **Acceptance** | Security test cases (section 5.3); penetration test findings closed or accepted |
 
+#### 3.6.14a Vault administration VM (CyberArk team, with DCE, Network, DevSecOps)
+
+| Item | Requirement |
+|---|---|
+| Purpose | The only place the CyberArk team runs Vault administration: PrivateArk Client, PARClient (remote Vault service control), Vault/DR Vault health and backup tools, CyberArk installers and scripts. No one logs on to the Vault servers interactively |
+| Count | 1 per classification (*Assumed*; a second for resilience is optional, Q34) |
+| Build | Windows Server 2022, hardened SOE, no internet, no email/browsing, AppLocker allow-list of admin tools only; EDR; patched monthly |
+| Access | Only by named CyberArk administrators, **through PSM** (recorded) with a ticket, using vaulted credentials. No direct RDP from user networks |
+| Network | To Vault and DR Vault on 1858 (Vault protocol) and the PARAgent remote-administration port (9022, verify 14.6); to PVWA 443; nothing else outbound except patching and logging |
+| Logging | OS and tool logs to Cribl/Splunk; DSOC use case "Vault administration session" |
+| Backup | Configuration backup; no Vault data stored on it |
+| **Acceptance** | Vault administration works only from this VM; direct logon to Vault servers blocked and alerted |
+
 #### 3.6.15 Consuming teams (and CND)
 
 - Provide the **target and account inventory** (template supplied): systems, account types, owners,
@@ -625,11 +642,11 @@ See section 4 for quantities. Raise orders in Phase 0–1 so licences are instal
 | Item | Detail | Quantity | Amount |
 |---|---|---|---|
 | Funding source | TBC (Q14) | — | TBC |
-| Infrastructure | VMs (compute, storage, backup) at chargeback rates | up to 45 VMs | TBC |
+| Infrastructure | VMs (compute, storage, backup) at chargeback rates | up to 48 VMs | TBC |
 | Vault storage expansion | Recordings (section 3.6.12) | per sizing | TBC |
 | RDS CALs | **Per User** CALs, same or newer version than the PSM OS, installed on each classification's own RD Licensing server. Separate, isolated licence servers can't share a pack, so buy per environment (confirm with Microsoft licensing): PROTECTED 250 + 10% ≈ 275; SECRET 200 + 10% = 220; plus CND users (Q20); OFFICIAL 90 + 10% = 99 | **≈ 594** (+ CND) | TBC |
 | Windows Server CALs | Users of PSM also need Windows Server CALs (often covered by an enterprise agreement) | as above | TBC |
-| Windows Server licences | 18 PSM servers (core-based) | 18 | TBC |
+| Windows Server licences | 18 PSM servers + 3 Vault admin VMs (core-based) | 21 | TBC |
 | RHEL subscriptions | PSMP (18), PTA (3), HTML5 GW (6 if approved) | 21–27 | TBC |
 | CyberArk licences | PSM, PSMP, PTA entitlement, users/targets per licence model | TBC (Q14) | TBC |
 | Client tool licences on PSM | Database and management clients that are not free (e.g. commercial DB tools) | per tool (Q21) | TBC |
@@ -707,7 +724,7 @@ Phase 4 (6–11, overlapping), Phase 5 (8–12, per wave), Phase 6 (from the fir
 ### 5.6 Service operations
 
 **Impact: Medium–High.**
-- New components to monitor, patch, back up and upgrade (up to 45 servers).
+- New components to monitor, patch, back up and upgrade (up to 48 servers).
 - **Upgrade and lifecycle:** CyberArk upgrade order (Vault → PVWA → CPM → PSM/PSMP → PTA, verify 14.6
   guidance); load-balanced pools upgraded **as a pool** (drain and upgrade all nodes in one change, or a
   parallel pool cut-over) because nodes in a pool must run the same version; monthly OS patching with a
@@ -754,7 +771,7 @@ Onboarding scales with the inventory (unit rates below).
 | WP02 | HLD/LLD and decision records | CyberArk | Security, Network | WP01 | 0 | 25–35 |
 | WP03 | Security assessment, accreditation, pen test coordination | Security | CyberArk | WP02 | 0–3 | 28–50 |
 | WP04 | Procurement: capacity, CALs, licences, RHEL, client tools | Procurement | CyberArk, DCE | WP02 | 0–1 | 6–12 |
-| WP05 | VM provisioning (up to 45) and placement | DCE | — | WP04, WP06 | 1 | 30–50 |
+| WP05 | VM provisioning (up to 48) and placement | DCE | — | WP04, WP06 | 1 | 30–50 |
 | WP06 | Windows Server version gate and PSM SOE; RHEL SOE | Windows / Linux Platform | CyberArk | WP02 | 0–1 | 20–40 |
 | WP07 | IP, DNS, component firewall flows | Network | CyberArk | WP02 | 1 | 14–21 |
 | WP08 | Load balancing: VIPs, persistence, health checks, drain integration | Network | M&C, CyberArk | WP05 | 1–2 | 14–21 |
@@ -776,6 +793,7 @@ Onboarding scales with the inventory (unit rates below).
 | WP24 | Target firewall flows per wave | Network | CyberArk | WP23 | 4 | 22–42 |
 | WP25 | Enforcement: bypass blocks, target GPOs, `sshd` restrictions, jump host restriction | Network / Identity / Platform | CyberArk | WP23 | 5 | 28–50 |
 | WP26 | Testing: SIT, security, HA/DR, performance, ticketing, logging, UAT | Test lead / CyberArk | All | WP12–WP20 | 2–5 | 70–110 |
+| WP28 | Vault administration VM: build, hardening, admin tools, PSM access, firewall, logging (3 VMs) | CyberArk | DCE, Network, DevSecOps | WP05, WP12 | 2–3 | 6–10 |
 | WP27 | Service transition, runbooks, training, hypercare; upgrade procedure; records procedure | Service Ops / CyberArk | Records | WP26 | 5–6 | 25–38 |
 | — | Project management and coordination | PM | — | — | All | 0.5 FTE × 12 months |
 
@@ -848,4 +866,5 @@ records.
 | Q30 | ~~ITSM~~ Answered: **ServiceNow in each classification** (I1) |
 | Q31 | ~~Native RDP option~~ Answered: **N1** |
 | Q32 | OFFICIAL: does CND need its own 2 + 2 pools there too (assumed yes)? Sites per classification for OFFICIAL? |
+| Q34 | Vault admin VM: one per classification enough, or two for resilience? Does it also administer the DR Vault (assumed yes)? |
 | Q33 | Partly answered: PSMP passes tickets to PVWA for validation; requester match supported. Still open: which ServiceNow fields/query conditions the 14.6 integration can check, and whether it can check the target CI |
