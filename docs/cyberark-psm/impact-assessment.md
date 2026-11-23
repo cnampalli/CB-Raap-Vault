@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Document status** | DRAFT v0.6, for review with every workstream named in section 4.6 |
+| **Document status** | DRAFT v0.7, for review with every workstream named in section 4.6 |
 | **Date** | 2026-11-23 |
 | **Author** | CyberArk team (TBC) |
 | **Environments** | OFFICIAL, PROTECTED and SECRET (production) |
@@ -17,6 +17,7 @@
 | 0.1 | 2026-11-20 | First outline from the template |
 | 0.2–0.5 | 2026-11-20 | Answers to Q1–Q34 added: OFFICIAL in scope, ServiceNow per classification, PTA mandatory, Vault admin VM, CyberArk-based sizing, CyberArk documentation facts |
 | 0.6 | 2026-11-23 | Restructured to read top to bottom: executive summary, current state, new **Solution design** section with 10 figures, decision log, impact by team and persona, BAU run effort, rollback, communications; stale text fixed; rejected options moved to Attachment J |
+| 0.7 | 2026-11-23 | CyberArk team effort corrected from the work-package build-up (280–460 d); **accelerated delivery option** (section 6.5.2, Figure 11) |
 
 | Role | Name | Sign-off |
 |---|---|---|
@@ -63,7 +64,7 @@ retrieve privileged passwords, sessions aren't recorded, and nothing ties a sess
 | Load balancer VIPs | 12 (15 with HTML5) |
 | RDS CALs (Per User) | ≈ 594 plus CND users |
 | Project effort (all teams) | roughly **700–1,200 person-days** (team totals in section 4.6 plus project management), of which the CyberArk team **280–460**; **plus account onboarding** (WP23), which depends on account counts (Attachment H) |
-| Duration | 12 months, 7 phases (Figure 10) |
+| Duration | 12 months, 7 phases (Figure 10); **accelerated option 7–9 months** with a pilot live in about 3 months (section 6.5.2, Figure 11) |
 
 **Key decisions already taken** (section 3.15): PVWA *Connect* launches the user's native RDP client
 after the ticket check (no direct RDP to PSM); native SSH through PSMP with the ticket entered at PSMP;
@@ -1066,6 +1067,8 @@ connection-component catalogues, SIEM use case catalogue.
 
 ### 6.5 Deployment
 
+#### 6.5.1 Standard plan (12 months)
+
 **High.**
 
 **Figure 10 — Indicative schedule (start date illustrative)**
@@ -1099,6 +1102,68 @@ gantt
 | 4. Onboarding waves | Pilot team, then waves: platforms, Safes, accounts, break-glass, application credentials, target flows, UAT | Wave UAT passed; rotation success above threshold | Pause wave; restore known passwords from the Vault to owners under dual control; keep direct access |
 | 5. Enforcement | Bypass blocks and target GPOs per wave; jump host restriction | Bypass tests fail as intended; detections live | Re-open the specific direct path by emergency change, time-boxed and alerted |
 | 6. Service transition | Runbooks, support model, training, hypercare | Service acceptance | Extend hypercare |
+
+#### 6.5.2 Accelerated delivery option (7–9 months)
+
+Most of the 12 months is waiting on other teams' lead times (VMs, firewall changes, SECRET media
+transfer, accreditation, ServiceNow), not CyberArk effort. The accelerated option runs those in
+parallel, cuts the first release to what delivers the outcome, and gets a pilot live early.
+
+| Lever | What changes | Saving |
+|---|---|---|
+| **L1. Pilot first** | One classification (PROTECTED), one consuming team, RDP + SSH, ServiceNow ticketing, recordings, Splunk basics. Runs on 2 PSM + 2 PSMP of the consumer pool | Real use in about **3 months**; proves capacity, ticket path and user guides before scale |
+| **L2. Build all three classifications in parallel** | One set of Ansible playbooks; DCE, Network and Identity work all three at once; SECRET media transfer started in Phase 0 | About **2 months** off the build |
+| **L3. Standard platforms and connection components** | CyberArk's out-of-box platforms and connectors first; custom ones only where a target needs it | WP21 and WP22 roughly **halved** |
+| **L4. Discovery-driven onboarding** | CyberArk account discovery and automatic onboarding rules for Windows local admin and Linux root; bulk REST onboarding for the rest | WP23 largely automated; the biggest variable saving |
+| **L5. Defer non-essentials** | HTML5 Gateway, PTA automatic responses (alerting stays from day one), niche database and web connectors move to a later wave | Shorter critical path |
+| **L6. Fast Phase 0** | Open questions answered and decisions signed in 4–6 weeks | About **1 month** |
+| **L7. Extra capacity** | CyberArk Professional Services or a partner for builds and onboarding | Removes the CyberArk team as a bottleneck (cost item) |
+
+**Figure 11 — Accelerated schedule (start date illustrative)**
+
+```mermaid
+gantt
+    title PSM accelerated option, 7-9 months (illustrative start)
+    dateFormat YYYY-MM-DD
+    axisFormat %b
+    section Phases
+    0 Fast discovery and design       :a0, 2027-01-04, 35d
+    1 Foundations, all classifications :a1, 2027-01-25, 60d
+    Pilot (PROTECTED, one team)       :a2, 2027-02-22, 45d
+    Build SECRET and OFFICIAL         :a3, 2027-03-15, 60d
+    Onboarding waves (discovery-led)  :a4, 2027-04-12, 120d
+    Enforcement per wave              :a5, 2027-05-24, 120d
+    Service transition and hypercare  :a6, 2027-04-12, 150d
+    Deferred items (HTML5, extras)    :a7, 2027-07-05, 60d
+    section Milestones
+    Decisions signed                  :milestone, b1, 2027-02-08, 0d
+    Pilot live                        :milestone, b2, 2027-04-05, 0d
+    All classifications built         :milestone, b3, 2027-05-31, 0d
+    All waves enforced                :milestone, b4, 2027-09-20, 0d
+```
+
+**What each team does differently**
+
+| Team | Change from the standard plan |
+|---|---|
+| CyberArk team | Pilot in month 2–3; playbooks reused across classifications; discovery and auto-onboarding; standard platforms first. Peak load needs 3–4 engineers, or a partner (L7) |
+| Data Centre Engineering | All VMs requested in Phase 0 and delivered together (up to 48), pilot VMs first |
+| Network | One firewall request covering component flows for all three classifications in Phase 1; target flows batched per wave with standard rules |
+| Identity / AD | AD change list for all three classifications in one change; enforcement GPOs prepared in advance |
+| Windows / Linux Platform | 2022 and RHEL 9 SOE confirmed in Phase 0 (no slippage room) |
+| ServiceNow team | Validation logic built once and deployed to three instances in parallel; pilot instance first |
+| SIEM / DSOC | Core use cases for the pilot; full catalogue by first enforcement |
+| Security & Accreditation | Assessment runs alongside the pilot; SECRET artefacts started in Phase 0 |
+| Consuming teams | Attachment H returned in the first 4 weeks; one team volunteers as pilot; dependency checks (WP29) ahead of each wave |
+| Procurement | CALs, licences and VM capacity ordered in Phase 0 |
+
+**Preconditions:** open questions Q9, Q14, Q23, Q25, Q28 and Q36 answered in the first 4 weeks; VM
+capacity and licences available on order; the firewall and accreditation processes can take parallel
+requests; one team commits to the pilot. **Effort:** total person-days are about the same or slightly
+lower (standard components, automation); they're compressed into fewer months, so peak demand on each
+team is higher. **Added risks:** higher peak load on Network, DCE and the CyberArk team; less time to
+absorb pilot lessons before scale (mitigated by keeping waves small); deferred items need their own
+change.
 
 ### 6.6 Production
 
