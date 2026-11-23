@@ -62,7 +62,7 @@ retrieve privileged passwords, sessions aren't recorded, and nothing ties a sess
 | New VMs | **42 firm** (36 PSM/PSMP, 3 PTA, 3 Vault admin), **up to 48** with the optional HTML5 Gateway, **+4** PSM if the pilot shows peak demand |
 | Load balancer VIPs | 12 (15 with HTML5) |
 | RDS CALs (Per User) | ≈ 594 plus CND users |
-| Project effort (all teams) | roughly **900–1,450 person-days** (team totals in section 4.6 plus project management), **plus account onboarding** (WP23), which depends on account counts (Attachment H) |
+| Project effort (all teams) | roughly **700–1,200 person-days** (team totals in section 4.6 plus project management), of which the CyberArk team **280–460**; **plus account onboarding** (WP23), which depends on account counts (Attachment H) |
 | Duration | 12 months, 7 phases (Figure 10) |
 
 **Key decisions already taken** (section 3.15): PVWA *Connect* launches the user's native RDP client
@@ -850,7 +850,7 @@ diagrams; SOE build standards; ServiceNow integration standards; SIEM onboarding
 | Records management | Recording retention/disposal/legal hold procedure | Recording design | 3–5 d | Phase 2 |
 | Consuming teams (more than 5; *Assumed* 6–10) | Attachment H inventory, dependency checks before rotation, account owners, UAT | Templates, onboarding waves | 3–8 d per team; 18–80 d in total | Phases 0, 4 |
 | CND | Attachment H inventory for CND pools, UAT | Same as consumers | 3–5 d | Phases 0, 4 |
-| CyberArk team | Design, build, configuration, onboarding, testing, handover | — | 460–720 d | All |
+| CyberArk team | Design, build, configuration, testing, handover, and support to other teams' work packages (onboarding WP23 on top) | — | 280–460 d (+ WP23) | All |
 
 #### 4.6.1 Data Centre Engineering
 
