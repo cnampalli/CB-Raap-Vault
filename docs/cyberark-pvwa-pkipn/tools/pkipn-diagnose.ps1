@@ -8,13 +8,28 @@
 
   Stage 2  IIS client-certificate settings, HTTPS binding (netsh), TLS 1.3
   Stage 3  user certificate chain + revocation from THIS server, Root store hygiene, proxy,
-           and a connection test to every CRL/OCSP/AIA URL: direct, through the netsh winhttp
-           proxy (the path IIS uses) and, with -Proxy, through an explicit proxy
+           and a connection test to every CRL/OCSP/AIA URL (from -UserCert, -Url and/or -UrlFile):
+           direct, through the netsh winhttp proxy (the path IIS uses) and, with -Proxy, through an
+           explicit proxy
   Stage 4  UPN / EKU in the user certificate, PKIPN DLL locations, PKI lines in web.config
   Logs     latest IIS 403s on PKI paths, CAPI2 log state, PVWA log lines mentioning PKI
 
 .PARAMETER UserCert
-  Path to the user's PUBLIC certificate (.cer, DER or Base64). Never a .pfx.
+  Optional. Path to the user's PUBLIC certificate (.cer, DER or Base64). Never a .pfx.
+  Without it, the certificate, chain and revocation checks are skipped; the server checks and the URL
+  tests (from -Url / -UrlFile) still run.
+
+.PARAMETER Url
+  Optional. One or more CRL / OCSP / AIA URLs to test, e.g. -Url http://crl.example/ca.crl,http://ocsp.example
+  (comma-separated, no spaces; use -UrlFile for long lists)
+  The kind is guessed (ocsp in the name = OCSP, .crl = CRL, .crt/.cer/.p7c/.p7b = AIA); force it with a
+  prefix: CRL=http://..., OCSP=http://..., AIA=http://...
+
+.PARAMETER UrlFile
+  Optional. Text file with one URL per line (same format as -Url; blank lines and # comments ignored).
+
+.PARAMETER UrlTestOnly
+  Run only the proxy and URL reachability sections (e.g. on a domain controller or any non-PVWA server).
 
 .PARAMETER Proxy
   Optional host:port of a proxy to test as well (e.g. before running netsh winhttp set proxy).
@@ -30,15 +45,25 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File .\pkipn-diagnose.ps1 -UserCert C:\temp\user.cer -Proxy 10.0.0.5:3128
+
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File .\pkipn-diagnose.ps1 -UrlTestOnly -Url http://crl.acme.corp.au/pki/crl/ADPICAG2.crl,http://ocsp.acme.corp.au
+
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File .\pkipn-diagnose.ps1 -UrlTestOnly -UrlFile C:\temp\urls.txt -Proxy 10.0.0.5:3128
 #>
+[CmdletBinding(PositionalBinding = $false)]
 param(
-  [Parameter(Mandatory = $true)][string]$UserCert,
+  [string]$UserCert,
   [string]$PvwaRoot = 'C:\inetpub\wwwroot\PasswordVault',
   [string]$SiteName = 'Default Web Site',
   [string]$PvwaLogDir = 'C:\Windows\Temp\PVWA',
   [string]$Proxy,
   [switch]$SkipUrlTests,
-  [int]$UrlTimeoutSec = 10
+  [int]$UrlTimeoutSec = 10,
+  [string[]]$Url,
+  [string]$UrlFile,
+  [switch]$UrlTestOnly
 )
 
 $ErrorActionPreference = 'Continue'
@@ -52,10 +77,35 @@ function Res([string]$state, [string]$t) { Out-R ("[{0}] {1}" -f $state, $t) }
 Head "PKIPN diagnostics on $env:COMPUTERNAME at $(Get-Date -Format s)"
 Out-R ("OS: {0}  build {1}" -f (Get-CimInstance Win32_OperatingSystem).Caption, [Environment]::OSVersion.Version)
 
+# ---------------------------------------------------------------- inputs
+$cert = $null; $chain = $null; $last = $null
+if ($UserCert) {
+  if (Test-Path $UserCert) { $cert = New-Object "$X.X509Certificate2" (Resolve-Path $UserCert).Path }
+  else { Res 'FAIL' "UserCert not found: $UserCert (certificate checks skipped)" }
+}
+$suppliedUrls = @()
+if ($Url) {   # powershell -File passes -Url a,b as one string: split on commas
+  $suppliedUrls += @($Url | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } |
+                     ForEach-Object { [pscustomobject]@{ Text = $_; Source = '-Url' } })
+}
+if ($UrlFile) {
+  if (Test-Path $UrlFile) {
+    $suppliedUrls += @(Get-Content $UrlFile | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') } |
+                       ForEach-Object { [pscustomobject]@{ Text = $_; Source = '-UrlFile' } })
+  } else { Res 'FAIL' "UrlFile not found: $UrlFile" }
+}
+if (-not $cert -and -not $suppliedUrls) {
+  Res 'INFO' 'No -UserCert, -Url or -UrlFile given: certificate checks and URL tests are skipped; server checks still run.'
+  Out-R '       Examples: -UserCert C:\temp\user.cer    or    -UrlTestOnly -Url http://crl.example/ca.crl,http://ocsp.example'
+}
+
+if (-not $UrlTestOnly -and -not $cert) {
+  Head 'STAGE 4a / STAGE 3 - User certificate, chain and revocation'
+  Res 'INFO' 'No -UserCert given: certificate content, chain and revocation checks skipped.'
+}
+if (-not $UrlTestOnly -and $cert) {
 # ---------------------------------------------------------------- user certificate
 Head 'STAGE 4a - User certificate content (what PKIPN reads)'
-if (-not (Test-Path $UserCert)) { Res 'FAIL' "UserCert not found: $UserCert"; return }
-$cert = New-Object "$X.X509Certificate2" (Resolve-Path $UserCert).Path
 if ($cert.HasPrivateKey) { Res 'WARN' 'This file contains a PRIVATE KEY. Use the public .cer only.' }
 Out-R "Subject : $($cert.Subject)"
 Out-R "Issuer  : $($cert.Issuer)"
@@ -125,7 +175,9 @@ foreach ($oid in '2.5.29.31', '1.3.6.1.5.5.7.1.1') {
   $x = $cert.Extensions | Where-Object { $_.Oid.Value -eq $oid }
   if ($x) { Out-R $x.Format($true) }
 }
+}   # end: certificate checks
 
+if (-not $UrlTestOnly) {
 Head 'STAGE 3 - LocalMachine\Root hygiene (non-self-signed certs here break client auth -> 403.16)'
 $bad = Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Subject -ne $_.Issuer }
 if ($bad) {
@@ -162,11 +214,13 @@ Out-R ("ClientAuthTrustMode = {0}  (0 = machine trust/default, 1 = exclusive roo
 $cai = @(Get-ChildItem Cert:\LocalMachine\ClientAuthIssuer -ErrorAction SilentlyContinue)
 Out-R ("Client Authentication Issuers store: {0} certificate(s)" -f $cai.Count)
 $cai | ForEach-Object { Out-R ("  {0} [{1}]" -f $_.Subject, $_.Thumbprint) }
-if ($mode -ne 0 -and $chain.ChainElements.Count -gt 1) {
+if ($mode -ne 0 -and $chain -and $chain.ChainElements.Count -gt 1) {
   $need = if ($mode -eq 1) { $last } else { $chain.ChainElements[1].Certificate }
   if ($need -and ($cai | Where-Object { $_.Thumbprint -eq $need.Thumbprint })) { Res 'OK' "Required issuer is in ClientAuthIssuer: $($need.Subject)" }
   elseif ($need) { Res 'FAIL' "Trust mode $mode needs this in ClientAuthIssuer: $($need.Subject). certutil -addstore ClientAuthIssuer <file>.cer, then reboot" }
 }
+if ($mode -ne 0 -and -not $cert) { Res 'INFO' 'Give -UserCert to check that its issuing CA (mode 2) or root (mode 1) is in ClientAuthIssuer.' }
+}   # end: Root hygiene and Schannel (skipped with -UrlTestOnly)
 
 Head 'STAGE 3 - Machine proxy used for CRL/OCSP downloads'
 (netsh winhttp show proxy) | ForEach-Object { Out-R $_ }
@@ -234,9 +288,18 @@ else {
     } else { Res 'WARN' "-Proxy '$Proxy' not understood; use host:port, e.g. 10.0.0.5:3128" }
   }
 
-  # Collect URLs from the user certificate and every non-root CA in the chain
+  # Collect URLs: from the user certificate and every non-root CA in its chain (if -UserCert),
+  # then from -Url / -UrlFile
   $urlItems = New-Object System.Collections.Generic.List[object]
-  $certsToScan = @($cert) + @($chain.ChainElements | ForEach-Object { $_.Certificate } | Where-Object { $_.Subject -ne $_.Issuer -and $_.Thumbprint -ne $cert.Thumbprint })
+  $certsToScan = @()
+  if ($cert) {
+    if (-not $chain) {   # -UrlTestOnly skips the chain section; build it here just to find the CA URLs
+      $chain = New-Object "$X.X509Chain"
+      $chain.ChainPolicy.RevocationMode = 'NoCheck'
+      [void]$chain.Build($cert)
+    }
+    $certsToScan = @($cert) + @($chain.ChainElements | ForEach-Object { $_.Certificate } | Where-Object { $_.Subject -ne $_.Issuer -and $_.Thumbprint -ne $cert.Thumbprint })
+  }
   foreach ($c in $certsToScan) {
     foreach ($oid in '2.5.29.31', '1.3.6.1.5.5.7.1.1') {
       $ext = $c.Extensions | Where-Object { $_.Oid.Value -eq $oid }
@@ -254,10 +317,21 @@ else {
       }
     }
   }
-  if ($urlItems.Count -eq 0) { Res 'INFO' 'No CRL/AIA URLs found in the certificate chain.' }
+  foreach ($su in $suppliedUrls) {
+    $t = $su.Text; $kind = $null
+    if ($t -match '^(CRL|OCSP|AIA)=(.+)$') { $kind = $Matches[1].ToUpper(); $t = $Matches[2].Trim() }
+    if (-not $kind) {
+      if ($t -match 'ocsp') { $kind = 'OCSP' }
+      elseif ($t -match '\.crl$') { $kind = 'CRL' }
+      elseif ($t -match '\.(crt|cer|p7c|p7b)$') { $kind = 'AIA' }
+      else { $kind = 'URL' }
+    }
+    if (-not ($urlItems | Where-Object { $_.Url -eq $t })) { $urlItems.Add([pscustomobject]@{ Url = $t; Kind = $kind; From = $su.Source }) }
+  }
+  if ($urlItems.Count -eq 0) { Res 'INFO' 'No URLs to test: give -UserCert, -Url or -UrlFile.' }
 
-  $kindOk = @{ CRL = $false; OCSP = $false; AIA = $false }
-  $kindSeen = @{ CRL = $false; OCSP = $false; AIA = $false }
+  $kindOk = @{ CRL = $false; OCSP = $false; AIA = $false; URL = $false }
+  $kindSeen = @{ CRL = $false; OCSP = $false; AIA = $false; URL = $false }
   foreach ($it in $urlItems) {
     Out-R ''
     Out-R ("[{0}] {1}   (from {2})" -f $it.Kind, $it.Url, $it.From)
@@ -304,7 +378,7 @@ else {
   }
 
   Out-R ''
-  $sum = foreach ($k in 'CRL', 'OCSP', 'AIA') { if ($kindSeen[$k]) { "{0}: {1}" -f $k, $(if ($kindOk[$k]) { 'yes' } else { 'NO' }) } else { "{0}: no http URL" -f $k } }
+  $sum = foreach ($k in 'CRL', 'OCSP', 'AIA', 'URL') { if ($kindSeen[$k]) { "{0}: {1}" -f $k, $(if ($kindOk[$k]) { 'yes' } else { 'NO' }) } else { "{0}: no http URL" -f $k } }
   Out-R ("Reachable on the IIS path (machine proxy setting): {0}" -f ($sum -join '; '))
   if ($kindSeen['CRL'] -and -not $kindOk['CRL']) { Res 'FAIL' 'No CRL URL is reachable on the IIS path: revocation checks will fail (IIS 403.13)' }
   elseif ($kindSeen['OCSP'] -and -not $kindOk['OCSP'] -and $kindOk['CRL']) { Res 'INFO' 'OCSP not reachable, CRL is: Windows falls back to the CRL (not blocking)' }
@@ -312,6 +386,7 @@ else {
   Out-R '  certutil -verify -urlfetch run as SYSTEM (chunk 02 Step 4).'
 }
 
+if (-not $UrlTestOnly) {
 # ---------------------------------------------------------------- IIS
 Head 'STAGE 2 - HTTPS bindings (netsh http show sslcert)'
 $ssl = @(netsh http show sslcert)
@@ -404,7 +479,8 @@ if ($capi -and $capi.IsEnabled) {
     Res $state ("{0} id={1} result={2} errorStatus={3} cert={4} [{5}]" -f $r.Time, $r.Id, $r.Result, $r.Errors, $r.Subject, $r.Thumb)
   }
   $sent = @($login | Where-Object { $_.Thumb } | ForEach-Object { $_.Thumb } | Select-Object -Unique)
-  if ($sent -and ($sent -notcontains $cert.Thumbprint.ToUpper())) {
+  if (-not $cert) { if ($sent) { Res 'INFO' 'Give -UserCert to compare these with the certificate you expect.' } }
+  elseif ($sent -and ($sent -notcontains $cert.Thumbprint.ToUpper())) {
     Res 'WARN' "The certificate(s) IIS checked differ from -UserCert ($($cert.Thumbprint)). Export the one the browser sent and re-run with it."
   } elseif ($sent) { Res 'OK' 'IIS checked the same certificate as -UserCert' }
   Out-R '  result/errorStatus 800B0109 = untrusted root, 80092013 = revocation offline, 800B0101 = expired, 0 = OK'
@@ -421,6 +497,7 @@ if (Test-Path $PvwaLogDir) {
     Select-String -Path $_.FullName -Pattern 'pki|certificate|PKIPN' | Select-Object -Last 15 | ForEach-Object { Out-R ("  {0}" -f $_.Line.Trim()) }
   }
 } else { Res 'INFO' "PVWA log folder not found: $PvwaLogDir" }
+}   # end: IIS, PVWA files and logs (skipped with -UrlTestOnly)
 
 Head 'DONE'
 Out-R "Report: $report"

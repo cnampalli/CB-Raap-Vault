@@ -17,6 +17,8 @@ Most of Part A is checked for you by the diagnostic script, so start with that.
    powershell -ExecutionPolicy Bypass -File .\pkipn-diagnose.ps1 -UserCert C:\temp\user.cer
    ```
 3. **Expected:** a file `C:\temp\pkipn-report-<server>-<time>.txt`. Keep it open for Part A.
+4. No user certificate yet? Run it without `-UserCert`: the server checks still run, and certificate
+   checks are skipped. Add `-Url <url1>,<url2>` to test known CRL/OCSP URLs.
 
 ## Part A — Each PVWA server (Windows / IIS)
 

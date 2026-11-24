@@ -89,6 +89,13 @@ URLs* tests every CRL, OCSP and AIA URL in the certificate chain **directly (no 
 netsh winhttp proxy** (the path IIS uses), and gives a verdict per URL. To try a proxy before configuring
 it, add `-Proxy <host:port>`. The verdicts are explained in chunk 07, *Revocation and proxy*.
 
+No user certificate at hand, or testing from another server (a domain controller, for example)? Test
+the URLs you already know, without `-UserCert`:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\pkipn-diagnose.ps1 -UrlTestOnly -Url http://crl.acme.corp.au/pki/crl/ADPICAG2.crl,http://ocsp.acme.corp.au
+```
+Separate URLs with commas and no spaces, or put one per line in a text file and use `-UrlFile C:\temp\urls.txt`.
+
 1. ⌨ `netsh winhttp show proxy`. If it says *Direct access*, set it (elevated prompt, host:port, no `http://`):
    ```cmd
    netsh winhttp set proxy proxy-server="10.x.x.x:3128" bypass-list="<local>"

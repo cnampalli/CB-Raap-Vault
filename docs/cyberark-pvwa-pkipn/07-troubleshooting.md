@@ -132,7 +132,9 @@ PowerShell, in the browser, or in `web.config` doesn't count for IIS.
 | Errors only on `ldap://` URLs | The `http://` URL worked | Harmless |
 
 **Reading the diagnostic script's reachability results** (section *Reachability of revocation and AIA
-URLs*; each URL is tested directly and through the netsh winhttp proxy):
+URLs*; each URL is tested directly and through the netsh winhttp proxy). The URLs come from `-UserCert`,
+or can be given directly without a certificate: `-UrlTestOnly -Url <url1>,<url2>` or
+`-UrlFile <file>` (one URL per line; prefix `CRL=`, `OCSP=` or `AIA=` to set the kind).
 
 | Direct | Machine proxy | Script says | Meaning and fix |
 |---|---|---|---|
