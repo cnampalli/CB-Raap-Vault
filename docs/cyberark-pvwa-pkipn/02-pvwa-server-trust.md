@@ -84,6 +84,11 @@ allow (a renewed CA certificate, a second external CA), with `certutil -addstore
 The external CA's CRL is on the internet. The PVWA server reaches it only through the **WinHTTP
 machine proxy**, not a browser, PowerShell or web.config proxy.
 
+**First, run the diagnostic script** (chunk 08 Step 0). Its section *Reachability of revocation and AIA
+URLs* tests every CRL, OCSP and AIA URL in the certificate chain **directly (no proxy)** and **through the
+netsh winhttp proxy** (the path IIS uses), and gives a verdict per URL. To try a proxy before configuring
+it, add `-Proxy <host:port>`. The verdicts are explained in chunk 07, *Revocation and proxy*.
+
 1. ⌨ `netsh winhttp show proxy`. If it says *Direct access*, set it (elevated prompt, host:port, no `http://`):
    ```cmd
    netsh winhttp set proxy proxy-server="10.x.x.x:3128" bypass-list="<local>"

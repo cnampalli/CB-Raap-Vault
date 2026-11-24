@@ -131,12 +131,29 @@ PowerShell, in the browser, or in `web.config` doesn't count for IIS.
 | CRL `Verified`, OCSP failed, check **passed** | Windows fell back to the CRL | Not blocking. Allow the OCSP host on the proxy when convenient |
 | Errors only on `ldap://` URLs | The `http://` URL worked | Harmless |
 
-**WinHTTP test** (uses the machine proxy, like IIS):
+**Reading the diagnostic script's reachability results** (section *Reachability of revocation and AIA
+URLs*; each URL is tested directly and through the netsh winhttp proxy):
+
+| Direct | Machine proxy | Script says | Meaning and fix |
+|---|---|---|---|
+| OK | OK | `[OK] Reachable directly and through the machine proxy` | Nothing to fix |
+| Fails | OK | `[OK] Reachable through the machine proxy` | Normal for a locked-down server |
+| OK | Fails | `[WARN] Reachable directly but NOT through the netsh winhttp proxy` | Proxy address or bypass list wrong. Fix the netsh proxy, or, if direct access is approved, `netsh winhttp reset proxy` |
+| Fails | Fails, no proxy set | `[FAIL] … no WinHTTP proxy is set` | Set the proxy (02 Step 4) |
+| Fails | Fails, proxy set | `[FAIL] Not reachable directly or through the netsh winhttp proxy` | Proxy and firewall both block it: give the network/proxy team the URL and the error shown |
+| — | `HTTP 407` | `[FAIL] Proxy requires authentication` | IIS can't log in to a proxy: ask for unauthenticated access to that host |
+| — | Fails, but `-Proxy` works | `[INFO] Works through -Proxy` | Set that proxy with the `netsh` command the script prints |
+
+Error codes in the output: `12007` name not resolved, `12029` cannot connect, `12002` timeout,
+`12157`/`12175` TLS errors. For OCSP URLs, `HTTP 400`/`405` counts as reachable.
+
+**WinHTTP test by hand** (machine proxy, like IIS):
 ```powershell
 $r = New-Object -ComObject WinHttp.WinHttpRequest.5.1
 $r.Open('GET', 'http://<crl-host>/<path>.crl', $false); $r.Send(); $r.Status
 ```
-**Expected:** `200`.
+**Expected:** `200`. **Same test without any proxy (direct):** add `$r.SetProxy(1)` before `$r.Open(...)`.
+**Through a specific proxy:** `$r.SetProxy(2, '<proxy-host>:<port>')`.
 
 **OCSP test.** A plain web request to an OCSP URL returns `400`/`405`, which still means *reachable*.
 Only a proxy error page, a timeout or `12007` means blocked. A real test (Git Bash, OpenSSL 3.x):

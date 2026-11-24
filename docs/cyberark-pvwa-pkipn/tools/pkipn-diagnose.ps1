@@ -7,21 +7,38 @@
   Changes nothing. Writes a report to .\pkipn-report-<host>-<time>.txt and the screen.
 
   Stage 2  IIS client-certificate settings, HTTPS binding (netsh), TLS 1.3
-  Stage 3  user certificate chain + revocation from THIS server, Root store hygiene, proxy
+  Stage 3  user certificate chain + revocation from THIS server, Root store hygiene, proxy,
+           and a connection test to every CRL/OCSP/AIA URL: direct, through the netsh winhttp
+           proxy (the path IIS uses) and, with -Proxy, through an explicit proxy
   Stage 4  UPN / EKU in the user certificate, PKIPN DLL locations, PKI lines in web.config
   Logs     latest IIS 403s on PKI paths, CAPI2 log state, PVWA log lines mentioning PKI
 
 .PARAMETER UserCert
   Path to the user's PUBLIC certificate (.cer, DER or Base64). Never a .pfx.
 
+.PARAMETER Proxy
+  Optional host:port of a proxy to test as well (e.g. before running netsh winhttp set proxy).
+
+.PARAMETER SkipUrlTests
+  Skip the outbound connection tests to the CRL/OCSP/AIA URLs.
+
+.PARAMETER UrlTimeoutSec
+  Timeout per connection test (default 10 seconds).
+
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File .\pkipn-diagnose.ps1 -UserCert C:\temp\user.cer
+
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File .\pkipn-diagnose.ps1 -UserCert C:\temp\user.cer -Proxy 10.0.0.5:3128
 #>
 param(
   [Parameter(Mandatory = $true)][string]$UserCert,
   [string]$PvwaRoot = 'C:\inetpub\wwwroot\PasswordVault',
   [string]$SiteName = 'Default Web Site',
-  [string]$PvwaLogDir = 'C:\Windows\Temp\PVWA'
+  [string]$PvwaLogDir = 'C:\Windows\Temp\PVWA',
+  [string]$Proxy,
+  [switch]$SkipUrlTests,
+  [int]$UrlTimeoutSec = 10
 )
 
 $ErrorActionPreference = 'Continue'
@@ -153,6 +170,147 @@ if ($mode -ne 0 -and $chain.ChainElements.Count -gt 1) {
 
 Head 'STAGE 3 - Machine proxy used for CRL/OCSP downloads'
 (netsh winhttp show proxy) | ForEach-Object { Out-R $_ }
+
+Head 'STAGE 3 - Reachability of revocation and AIA URLs (direct and via proxy)'
+if ($SkipUrlTests) { Out-R 'Skipped (-SkipUrlTests).' }
+else {
+  $ms = [Math]::Max(1, $UrlTimeoutSec) * 1000
+  $winHttpErr = @{ 12002 = 'timeout'; 12007 = 'name not resolved'; 12029 = 'cannot connect'; 12030 = 'connection aborted';
+                   12152 = 'invalid server response'; 12157 = 'TLS error'; 12175 = 'TLS certificate error'; 12180 = 'proxy auto-detect failed' }
+
+  function Get-DnsText([string]$h) {
+    try { return ((([System.Net.Dns]::GetHostAddresses($h)) | ForEach-Object { $_.IPAddressToString }) -join ', ') } catch { return $null }
+  }
+  function Test-Tcp([string]$h, [int]$port) {
+    $tc = New-Object System.Net.Sockets.TcpClient
+    try {
+      $ar = $tc.BeginConnect($h, $port, $null, $null)
+      if (-not $ar.AsyncWaitHandle.WaitOne($ms)) { return 'no answer (timeout: blocked or filtered)' }
+      try { $tc.EndConnect($ar); return 'open' }
+      catch { $e = $_.Exception; while ($e.InnerException) { $e = $e.InnerException }; return ('failed: ' + $e.Message) }
+    } catch { $e = $_.Exception; while ($e.InnerException) { $e = $e.InnerException }; return ('failed: ' + $e.Message) }
+    finally { $tc.Close() }
+  }
+  # mode 0 = pre-configured (netsh winhttp, what IIS/CAPI2 use), 1 = direct (no proxy), 2 = explicit proxy
+  function Test-Http([string]$url, [int]$mode, [string]$proxyServer) {
+    try {
+      $r = New-Object -ComObject WinHttp.WinHttpRequest.5.1
+      if ($mode -eq 2) { [void]$r.SetProxy(2, $proxyServer, '<local>') } else { [void]$r.SetProxy($mode) }
+      [void]$r.SetTimeouts($ms, $ms, $ms, $ms)
+      [void]$r.Open('GET', $url, $false)
+      [void]$r.Send()
+      return [pscustomobject]@{ Ok = $true; Status = [int]$r.Status; Text = ("HTTP {0} {1}" -f $r.Status, $r.StatusText) }
+    } catch {
+      $e = $_.Exception; while ($e.InnerException) { $e = $e.InnerException }
+      $code = $e.HResult -band 0xFFFF
+      $name = if ($winHttpErr.ContainsKey($code)) { $winHttpErr[$code] } else { 'error' }
+      return [pscustomobject]@{ Ok = $false; Status = 0; Text = ("WinHTTP {0} ({1}): {2}" -f $code, $name, (($e.Message -split "`n")[0]).Trim()) }
+    }
+  }
+  # Reachable = the server answered the request. For OCSP a plain GET is not a valid OCSP request,
+  # so 400/404/405 still prove the responder is reachable. 403/407/5xx usually come from a proxy.
+  function Test-Reach($res, [string]$kind) {
+    if (-not $res.Ok) { return $false }
+    if ($res.Status -ge 200 -and $res.Status -lt 400) { return $true }
+    if ($kind -eq 'OCSP' -and $res.Status -in 400, 404, 405) { return $true }
+    return $false
+  }
+
+  # Proxy settings and proxy reachability
+  $nh = @(netsh winhttp show proxy)
+  $winhttpProxySet = -not ($nh -match 'Direct access')
+  $nhProxy = $null
+  if ($winhttpProxySet) {
+    $line = $nh | Where-Object { $_ -match 'Proxy Server' } | Select-Object -First 1
+    if ($line -match '([A-Za-z0-9\.\-]+):(\d+)') { $nhProxy = @{ Host = $Matches[1]; Port = [int]$Matches[2] } }
+  }
+  if ($nhProxy) { Out-R ("netsh winhttp proxy {0}:{1} - TCP: {2}" -f $nhProxy.Host, $nhProxy.Port, (Test-Tcp $nhProxy.Host $nhProxy.Port)) }
+  else { Out-R 'netsh winhttp: Direct access (no machine proxy). The machine-proxy test below is then the same as direct.' }
+  $exProxy = $null
+  if ($Proxy) {
+    if ($Proxy -match '^(?:https?://)?([A-Za-z0-9\.\-]+):(\d+)$') {
+      $exProxy = "{0}:{1}" -f $Matches[1], $Matches[2]
+      Out-R ("-Proxy {0} - TCP: {1}" -f $exProxy, (Test-Tcp $Matches[1] ([int]$Matches[2])))
+    } else { Res 'WARN' "-Proxy '$Proxy' not understood; use host:port, e.g. 10.0.0.5:3128" }
+  }
+
+  # Collect URLs from the user certificate and every non-root CA in the chain
+  $urlItems = New-Object System.Collections.Generic.List[object]
+  $certsToScan = @($cert) + @($chain.ChainElements | ForEach-Object { $_.Certificate } | Where-Object { $_.Subject -ne $_.Issuer -and $_.Thumbprint -ne $cert.Thumbprint })
+  foreach ($c in $certsToScan) {
+    foreach ($oid in '2.5.29.31', '1.3.6.1.5.5.7.1.1') {
+      $ext = $c.Extensions | Where-Object { $_.Oid.Value -eq $oid }
+      if (-not $ext) { continue }
+      $kind = if ($oid -eq '2.5.29.31') { 'CRL' } else { 'AIA' }
+      foreach ($l in ($ext.Format($true) -split "`r?`n")) {
+        if ($l -match '1\.3\.6\.1\.5\.5\.7\.48\.1') { $kind = 'OCSP' }
+        elseif ($l -match '1\.3\.6\.1\.5\.5\.7\.48\.2') { $kind = 'AIA' }
+        if ($l -match 'URL=(\S+)') {
+          $u = $Matches[1].TrimEnd(',')
+          if (-not ($urlItems | Where-Object { $_.Url -eq $u })) {
+            $urlItems.Add([pscustomobject]@{ Url = $u; Kind = $kind; From = ($c.Subject -split ',')[0] })
+          }
+        }
+      }
+    }
+  }
+  if ($urlItems.Count -eq 0) { Res 'INFO' 'No CRL/AIA URLs found in the certificate chain.' }
+
+  $kindOk = @{ CRL = $false; OCSP = $false; AIA = $false }
+  $kindSeen = @{ CRL = $false; OCSP = $false; AIA = $false }
+  foreach ($it in $urlItems) {
+    Out-R ''
+    Out-R ("[{0}] {1}   (from {2})" -f $it.Kind, $it.Url, $it.From)
+    try { $uri = [Uri]$it.Url } catch { Res 'WARN' '  not a valid URL'; continue }
+    $dns = Get-DnsText $uri.Host
+    Out-R ("  DNS {0}: {1}" -f $uri.Host, $(if ($dns) { $dns } else { 'not resolved by this server (fine if the proxy resolves it)' }))
+
+    if ($uri.Scheme -eq 'ldap') {
+      $p = if ($uri.Port -gt 0) { $uri.Port } else { 389 }
+      Out-R ("  Direct TCP {0}:{1}: {2}" -f $uri.Host, $p, (Test-Tcp $uri.Host $p))
+      Res 'INFO' '  LDAP cannot go through an HTTP proxy. Harmless if an http:// URL of the same kind is reachable.'
+      continue
+    }
+    if ($uri.Scheme -notin 'http', 'https') { Res 'INFO' ("  scheme {0} not tested" -f $uri.Scheme); continue }
+
+    $kindSeen[$it.Kind] = $true
+    Out-R ("  Direct TCP {0}:{1}: {2}" -f $uri.Host, $uri.Port, (Test-Tcp $uri.Host $uri.Port))
+    $rd = Test-Http $it.Url 1 $null
+    Out-R ("  Direct HTTP (no proxy):            {0}" -f $rd.Text)
+    $rm = Test-Http $it.Url 0 $null
+    Out-R ("  Machine proxy (netsh winhttp, IIS): {0}" -f $rm.Text)
+    $d = Test-Reach $rd $it.Kind
+    $m = Test-Reach $rm $it.Kind
+    if ($m) { $kindOk[$it.Kind] = $true }
+
+    if ($d -and $m) { Res 'OK' '  Reachable directly and through the machine proxy' }
+    elseif ($m) { Res 'OK' '  Reachable through the machine proxy (direct access blocked: normal for a locked-down server)' }
+    elseif ($d) {
+      if ($winhttpProxySet) { Res 'WARN' '  Reachable directly but NOT through the netsh winhttp proxy: check the proxy address and bypass list, or, if direct access is approved, netsh winhttp reset proxy' }
+      else { Res 'WARN' '  Direct request works but the default WinHTTP request failed: re-run; check netsh winhttp settings' }
+    } else {
+      if ($winhttpProxySet) { Res 'FAIL' '  Not reachable directly or through the netsh winhttp proxy: raise with the network/proxy team (see the results above)' }
+      else { Res 'FAIL' '  Not reachable directly and no WinHTTP proxy is set: set one with netsh winhttp set proxy (chunk 02 Step 4)' }
+    }
+    if ($rm.Status -eq 407) { Res 'FAIL' '  Proxy requires authentication (407): IIS cannot log in to a proxy. Ask for unauthenticated access to this host' }
+
+    if ($exProxy) {
+      $rx = Test-Http $it.Url 2 $exProxy
+      Out-R ("  Explicit proxy {0}:  {1}" -f $exProxy, $rx.Text)
+      if ((Test-Reach $rx $it.Kind) -and -not $m) {
+        Res 'INFO' ('  Works through -Proxy. To use it for IIS: netsh winhttp set proxy proxy-server="{0}" bypass-list="<local>"' -f $exProxy)
+      }
+    }
+  }
+
+  Out-R ''
+  $sum = foreach ($k in 'CRL', 'OCSP', 'AIA') { if ($kindSeen[$k]) { "{0}: {1}" -f $k, $(if ($kindOk[$k]) { 'yes' } else { 'NO' }) } else { "{0}: no http URL" -f $k } }
+  Out-R ("Reachable on the IIS path (machine proxy setting): {0}" -f ($sum -join '; '))
+  if ($kindSeen['CRL'] -and -not $kindOk['CRL']) { Res 'FAIL' 'No CRL URL is reachable on the IIS path: revocation checks will fail (IIS 403.13)' }
+  elseif ($kindSeen['OCSP'] -and -not $kindOk['OCSP'] -and $kindOk['CRL']) { Res 'INFO' 'OCSP not reachable, CRL is: Windows falls back to the CRL (not blocking)' }
+  Out-R '  Direct and machine-proxy results do not depend on your user Internet Options. The final proof is still'
+  Out-R '  certutil -verify -urlfetch run as SYSTEM (chunk 02 Step 4).'
+}
 
 # ---------------------------------------------------------------- IIS
 Head 'STAGE 2 - HTTPS bindings (netsh http show sslcert)'
