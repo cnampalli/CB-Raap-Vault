@@ -13,7 +13,8 @@ Writing rules
 - Mark vendor facts with a source tag and unconfirmed statements with "(to be validated)" and the check
   that will confirm them.
 - Diagrams: SVG generated from a script kept next to the document, with zones as containers, a legend,
-  and existing components shown with a dashed outline.
+  and existing components shown with a dashed outline. The accepted standard style is the one produced by
+  docs/cyberark-psm/tools/build_diagrams.py: copy that script and adapt the figure functions.
 - Delete these comments and every "<...>" placeholder before review.
 -->
 

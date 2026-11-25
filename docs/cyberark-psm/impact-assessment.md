@@ -1228,7 +1228,7 @@ v0.11, and a final review of v0.12, found the following; each is addressed in th
 | 0.9 | 2026-11-24 | Stakeholder review: gates, design and assurance deliverables, non-production, recommendation, effort and schedule rebuilt |
 | 0.10 | 2026-11-25 | Answers applied: no HTML5, 15 CND users, F5, two sites, RHEL 8, PKIPN in scope, eligible tickets, 4-week accreditation lead time |
 | 0.11 | 2026-11-25 | Network and security design: zones, sites, flow matrix, trust boundaries, F5 LTM and DNS, second Vault administration VM, resource summary |
-| 0.12 | 2026-11-25 | Baseline rewrite for review: main body cut to decisions and design with detail in appendices; each fact stated once; professional diagrams generated from `tools/build_diagrams.py` |
+| 0.12 | 2026-11-25 | Baseline rewrite for review: main body cut to decisions and design with detail in appendices; each fact stated once; professional diagrams generated from `tools/build_diagrams.py`. Diagram style accepted by the sponsor as the standard (2026-11-25). Issued for stakeholder review with four owned items open: funding envelope, Vault RTO/RPO, Q15, Q45 |
 
 ### Glossary
 
