@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Document status** | DRAFT v0.10, for review by every approver and workstream lead listed below |
+| **Document status** | DRAFT v0.11, for review by every approver and workstream lead listed below |
 | **Date** | 2026-11-25 |
 | **Author** | CyberArk lead (name to be added before G0) |
 | **Environments** | OFFICIAL, PROTECTED and SECRET (production); PROTECTED (non-production) |
@@ -21,6 +21,7 @@
 | 0.8 | 2026-11-23 | Tone and language review: formal register, neutral source labels, requirements in "shall" form, consistent terminology, extended glossary. |
 | 0.9 | 2026-11-24 | Independent stakeholder review (Attachment K). Changes: approval gates G0–G7 ([Governance and approval gates](#governance-and-approval-gates)); key deliverables extended to the design, approval, assurance and closure products ([Key deliverables](#key-deliverables)); a non-production environment in PROTECTED (DEC-17, WP30); the accelerated plan recommended (DEC-18); effort rebuilt from the work packages so that [Requirements by workstream: workstream commitments](#requirements-by-workstream-workstream-commitments) and [Resource effort and work packages](#resource-effort-and-work-packages) and the executive summary agree; schedules rebuilt so that no phase starts before its gate and hypercare ends after the last enforcement (durations restated); capacity contingency corrected to +3 PROTECTED and +2 SECRET (DEC-09); new risks R21–R27; open questions Q38–Q46 with owners and needed-by gates; incomplete statements rewritten as complete sentences. |
 | 0.10 | 2026-11-25 | Answers to open questions applied: HTML5 Gateway not included (DEC-06); 15 CND users; SQL Server Management Studio and pgAdmin as database clients; two sites (primary and secondary) per classification; F5 load balancers; RHEL 8 with a concession (DEC-19); existing non-production Vault, PVWA and CPM reused (6 non-production VMs); PVWA certificate login (PKIPN) in production added to scope (WP33, KD39); eligible ticket types; 4-week accreditation lead time (schedules moved); 24x7 L2 support by the Security Operations team; jump hosts retired at enforcement; SECRET transfers through the CDS. Section numbers removed from headings; cross-references are now links. |
+| 0.11 | 2026-11-25 | Network and security design: proposed zone model Z1–Z8 with placement of every component; primary and secondary site placement; zone-to-zone flow matrix (F1–F26); security controls at each trust boundary; new figures for classification boundaries (Figure 2), zones (Figure 4), sites (Figure 5) and non-production (Figure 11), with the other figures renumbered; F5 LTM at each site with F5 DNS wide IPs (DEC-21); a second Vault administration VM at the secondary site in each classification (DEC-07); a Resource summary section with every VM size and the totals for CPU, memory, storage, IP addresses, DNS records, certificates and licences. |
 
 **Approvals.** Signing this document means that the signatory has read the sections listed against
 their role, accepts the commitments and effort shown for their team ([Requirements by workstream: workstream commitments](#requirements-by-workstream-workstream-commitments) and [Resource effort and work packages](#resource-effort-and-work-packages)), and agrees
@@ -99,12 +100,12 @@ points the table gives (most within the first 4 weeks of Phase 0). If they are n
 | Item | Quantity |
 |---|---|
 | Privileged users | 540 (250 PROTECTED, 200 SECRET, 90 OFFICIAL), plus 15 CND analysts who use all three classifications |
-| New production VMs | **42 firm**: 36 PSM/PSMP, 3 PTA, 3 Vault administration. **Up to 5** further PSM nodes held in contingency (+3 PROTECTED, +2 SECRET), built only if the scale-out trigger in [Capacity](#capacity) is met. The HTML5 Gateway is not included (DEC-06) |
+| New production VMs | **45 firm**: 36 PSM/PSMP, 3 PTA, 6 Vault administration (one per site). **Up to 5** further PSM nodes held in contingency (+3 PROTECTED, +2 SECRET), built only if the scale-out trigger is met. Totals for CPU, memory and storage: [Resource summary](#resource-summary) |
 | New non-production VMs (PROTECTED) | **6** (2 PSM, 2 PSMP, PTA, Vault administration VM), connected to the existing non-production Vault, PVWA and CPM (Q39) |
-| Load balancer VIPs (F5) | 14 (12 production, 2 non-production) |
+| F5 load balancing | 26 LTM virtual servers (8 per production classification: 4 services at each of 2 sites; 2 in non-production) and 12 F5 DNS wide IPs (DEC-21) |
 | RDS CALs (Per User) | Approximately 655: production 292 PROTECTED, 237 SECRET and 116 OFFICIAL (each including 17 for CND), plus 10 for non-production testers |
-| Project effort (all teams) | Accelerated plan: approximately **820–1,345 person-days**, plus about 115 person-days of account onboarding at the example volume in [Resource effort and work packages](#resource-effort-and-work-packages). Standard plan: approximately **860–1,400 person-days**, plus about 215 person-days of onboarding. The CyberArk team's share is 267–457 person-days (accelerated) or 279–483 person-days (standard), before onboarding. [Requirements by workstream: workstream commitments](#requirements-by-workstream-workstream-commitments) shows each team's share |
-| Duration | Accelerated: pilot in production after approximately 4 months; all waves enforced after approximately 9 months; operational acceptance after approximately 10 months (Figure 11). Standard: approximately 15 months (Figure 10). Both include the 4-week accreditation lead time for each classification |
+| Project effort (all teams) | Accelerated plan: approximately **820–1,345 person-days**, plus about 115 person-days of account onboarding at the example volume in [Resource effort and work packages](#resource-effort-and-work-packages). Standard plan: approximately **860–1,400 person-days**, plus about 215 person-days of onboarding. The CyberArk team's share is 269–460 person-days (accelerated) or 281–486 person-days (standard), before onboarding. [Requirements by workstream: workstream commitments](#requirements-by-workstream-workstream-commitments) shows each team's share |
+| Duration | Accelerated: pilot in production after approximately 4 months; all waves enforced after approximately 9 months; operational acceptance after approximately 10 months (Figure 13). Standard: approximately 15 months (Figure 12). Both include the 4-week accreditation lead time for each classification |
 
 **Approval gates** ([Governance and approval gates](#governance-and-approval-gates)): G0 IA approval and funding; G1 HLD endorsed by the architecture
 forum; G2 LLD endorsed by the architecture forum; G3 build readiness approved by the change advisory
@@ -155,7 +156,7 @@ classifications. It consists of the following components.
 | PSM for SSH (PSMP) (Linux) | Proxies SSH sessions to Linux/Unix servers and network devices. |
 | PVWA certificate login (PKIPN) | Smart-card login to PVWA, tested so far only in development, is configured and tested in production in each classification (WP33, KD39). PSMP inherits it through MFA caching. |
 | Privileged Threat Analytics (PTA) | **Mandatory.** Detects risky privileged activity and PSM bypass, and sends alerts to the SIEM. |
-| Vault administration VM | One per classification. It is the only place from which the Vault and DR Vault are administered. |
+| Vault administration VM | Two per classification, one at each site. They are the only places from which the Vault and DR Vault are administered. |
 | Non-production environment | Two PSM, two PSMP, a PTA and a Vault administration VM in PROTECTED, connected to the existing non-production Vault, PVWA and CPM. Used to prove designs, integrations, upgrades and connector changes before production ([Non-production environment](#non-production-environment)). |
 | ServiceNow ticketing | Every session or credential use needs an eligible ServiceNow ticket ([Ticketing (ServiceNow)](#ticketing-servicenow)). |
 | SIEM integration | CyberArk → Cribl → Splunk → DSOC: logs, dashboards, alerts and use cases. |
@@ -214,7 +215,7 @@ be measured (Q36).
 
 | Criterion | Assessment |
 |---|---|
-| New infrastructure | Yes. There are 42 firm production VMs, up to 5 contingency PSM nodes, 6 non-production VMs, and 14 VIPs. |
+| New infrastructure | Yes. There are 45 firm production VMs, up to 5 contingency PSM nodes, 6 non-production VMs, 26 F5 LTM virtual servers and 12 F5 DNS wide IPs ([Resource summary](#resource-summary)). |
 | Changes how people work | Yes. About 540 privileged users change how they reach Windows, Linux, network, database and web targets. |
 | Network | Yes. There are new flows in all three classifications, and direct administrative paths are removed at enforcement. |
 | Identity | Yes. The change adds AD OUs, GPOs, service accounts and delegations, and changes break-glass accounts. |
@@ -256,10 +257,10 @@ The project shall:
 | CND PSM | PSM (Windows) | 2 | CND only | `psm-cnd-<env>` (RDP 3389) |
 | CND PSMP | PSM for SSH (Linux) | 2 | CND only | `psmp-cnd-<env>` (SSH 22) |
 | PTA | Privileged Threat Analytics (mandatory) | 1, no HA (DEC-05) | Security and DSOC | None |
-| Vault administration VM | Windows Server 2022; administers the Vault and DR Vault | 1 (DEC-07) | CyberArk team | None |
+| Vault administration VM | Windows Server 2022; one administers the Vault, one the DR Vault | 2, one per site (DEC-07) | CyberArk team | None |
 
 
-**Production totals:** 36 PSM/PSMP + 3 PTA + 3 Vault administration = **42 firm**. Up to **5** further PSM
+**Production totals:** 36 PSM/PSMP + 3 PTA + 6 Vault administration = **45 firm**. Up to **5** further PSM
 nodes (+3 PROTECTED, +2 SECRET) are held in contingency and are built only if the scale-out trigger in
 [Capacity](#capacity) is met (KD28). The CND pools have their own VIPs, Safes and roles, and serve the 15 CND
 analysts in every classification. The HTML5 Gateway is not included (DEC-06); adding it later needs a
@@ -274,7 +275,7 @@ describes the environment.
   manager, Q38);
 - additional PVWA or CPM nodes if Phase 0 measurement shows a need (up to 3 per classification; Q36, R20).
 
-**Planning ceiling for DCE:** 42 + 5 (production) + 6 (non-production) = **53 VMs**, plus up to 12 if both
+**Planning ceiling for DCE:** 45 + 5 (production) + 6 (non-production) = **56 VMs** ([Resource summary](#resource-summary)), plus up to 12 if both
 possible additions are confirmed.
 
 #### Targets and onboarding in scope
@@ -331,7 +332,7 @@ contribute to the mitigation.
 
 | # | Risk | L | I | Mitigation | Owner | Contributors |
 |---|---|---|---|---|---|---|
-| R1 | Procurement or capacity delays the delivery of up to 53 VMs across four environments. | M | H | DCE receives the capacity request in Phase 0. The build sequence follows the selected plan: in the accelerated plan, all classifications are built in parallel with the pilot VMs first; in the standard plan, PROTECTED is built first. | DCE manager | Procurement |
+| R1 | Procurement or capacity delays the delivery of up to 56 VMs across four environments. | M | H | DCE receives the capacity request in Phase 0. The build sequence follows the selected plan: in the accelerated plan, all classifications are built in parallel with the pilot VMs first; in the standard plan, PROTECTED is built first. | DCE manager | Procurement |
 | R2 | Firewall changes across many target networks take longer than planned. | H | H | One consolidated firewall matrix per classification (Attachment A); the target inventory is collected up front; target flows are batched per wave with standard rules. | Network manager | CyberArk lead |
 | R3 | Demand at the top of the PROTECTED and SECRET estimates exceeds what 4 consumer PSM nodes can serve within CyberArk's 60-sessions-per-PSM ceiling. | M | H | The pilot measures demand; the scale-out trigger is monitored; 3 PSM nodes in PROTECTED and 2 in SECRET are held in contingency ([Capacity](#capacity), KD28). PSMP nodes are added by change if the Phase 2 test shows a lower PSMP limit. | CyberArk lead | DCE |
 | R4 | A shortfall in RDS CALs, or no RD Licensing server, causes PSM to refuse sessions after the licensing grace period. | M | H | The licence model and quantities are agreed before G1 ([Costs](#costs)); licences are installed and activated before G3 (KD24). | Procurement manager | Identity |
@@ -359,12 +360,13 @@ contribute to the mitigation.
 | R26 | CyberArk administrators have broad control over the platform with limited independent oversight. | M | H | CyberArk administrators work only through the Vault administration VM and PSM, so their sessions are recorded. DSOC alerts on Vault administration sessions and Safe permission changes. Security reviews a sample of CyberArk administrator sessions every month. CyberArk administrators cannot delete recordings or audit records. | Security accreditation lead | CyberArk lead |
 | R27 | Non-interactive privileged use (scripts, Ansible, monitoring agents, backup tools) breaks when passwords rotate or when direct paths are blocked. | H | M | WP29 identifies these uses. Affected accounts are not rotated or enforced until the owner moves them to a supported method or obtains a concession. Moving application credentials to CyberArk credential providers is outside this change ([Exclusions](#exclusions)). | Account owner (per wave) | CyberArk lead |
 | R28 | PVWA certificate login (PKIPN) is not working in production in time for the pilot. | M | H | WP33 starts in Phase 1, applies the lessons recorded in the *PVWA Certificate Authentication (PKIPN) Guide*, and is tested in non-production first. If PKIPN is late in a classification, the first wave in that classification uses the current PVWA login method, under a Security-approved concession, until KD39 is met. | CyberArk lead | PKI, Network |
+| R29 | F5 DNS is not available in a classification, so site failover for the session pools is a manual DNS change. | M | M | Network confirms F5 DNS availability by week 4 of Phase 0 (Q52). If it is not available, the fallback in [High availability, load balancing and sites](#high-availability-load-balancing-and-sites) applies, and the site-loss runbook includes the manual DNS change. | Network manager | CyberArk lead |
 
 ### Dependencies
 
 | # | Dependency | Owner | Needed by |
 |---|---|---|---|
-| D1 | Capacity and VMs to specification: 42 production VMs, 6 non-production VMs, contingency nodes when triggered | DCE | Non-production VMs within 4 weeks of the start of Phase 1 (requested in Phase 0); production VMs before G3 |
+| D1 | Capacity and VMs to specification: 45 production VMs, 6 non-production VMs, contingency nodes when triggered | DCE | Non-production VMs within 4 weeks of the start of Phase 1 (requested in Phase 0); production VMs before G3 |
 | D2 | Windows Server 2022 SOE in all three classifications; confirmation that the existing RHEL 8 SOE supports PSMP and PTA | Windows Platform; Linux Platform | Readiness confirmed before G1; SOE accepted before the production build |
 | D3 | IP addresses, DNS records, VIPs and health checks | Network | Phase 1 |
 | D4 | Firewall rules: component flows (Phase 1), target flows (before each wave), bypass blocks (at each wave's enforcement) | Network | Phase 1; G5 for each wave; G6 for each wave |
@@ -405,9 +407,39 @@ The following are outside this change:
 This section is the basis for the high-level design (HLD, KD16) and the low-level design for each
 classification (LLD, KD17). The architecture forum endorses the HLD at G1 and the LLDs at G2.
 
+### Classification boundaries
+
+Each classification is a separate, self-contained network with its own PAM stack, its own enterprise
+services and its own SIEM path. No network flow crosses from one classification to another. Software
+media and updates enter SECRET only through the cross-domain solution (CDS). The non-production
+environment sits inside PROTECTED, in its own zone.
+
+**Figure 2 — Classification boundaries**
+
+```mermaid
+flowchart LR
+    subgraph OFF["OFFICIAL network"]
+        O1["Production PAM stack<br/>Vault, DR Vault, PVWA, CPM,<br/>PSM, PSMP, PTA, Vault admin VMs"]
+        O2["Enterprise services<br/>AD, ServiceNow, Cribl, Splunk"]
+    end
+    subgraph PRO["PROTECTED network"]
+        P1["Production PAM stack<br/>(same as OFFICIAL)"]
+        P2["Enterprise services<br/>(same as OFFICIAL)"]
+        P3["Non-production zone<br/>new PSM, PSMP, PTA, Vault admin VM<br/>+ existing non-production Vault, PVWA, CPM"]
+    end
+    subgraph SEC["SECRET network"]
+        S1["Production PAM stack<br/>(same as OFFICIAL)"]
+        S2["Enterprise services<br/>(same as OFFICIAL)"]
+    end
+    CDS["Cross-domain solution (CDS)"]
+    CDS -->|"software media, one way in"| SEC
+    OFF -. "no network flows" .- PRO
+    PRO -. "no network flows" .- SEC
+```
+
 ### Logical architecture
 
-**Figure 2 — Logical architecture (one production classification; identical in all three)**
+**Figure 3 — Logical architecture (one production classification; identical in all three)**
 
 ```mermaid
 flowchart TB
@@ -418,8 +450,8 @@ flowchart TB
     subgraph CNDN["CND networks"]
         CNDU["CND analysts"]
     end
-    subgraph PAM["PAM zone"]
-        PVWA["PVWA (smart-card login)"]
+    subgraph PAM["PAM zones"]
+        PVWA["PVWA x4 (existing,<br/>smart-card login)"]
         subgraph CPOOL["Consumer pools"]
             PSMc["PSM x4"]
             PSMPc["PSMP x4"]
@@ -428,11 +460,11 @@ flowchart TB
             PSMn["PSM x2"]
             PSMPn["PSMP x2"]
         end
-        CPM["CPM"]
+        CPM["CPM x2 (existing,<br/>active / standby)"]
         PTA["PTA x1"]
-        VADM["Vault administration VM"]
-        V[("Vault")]
-        DRV[("DR Vault")]
+        VADM["Vault administration VM x2"]
+        V[("Vault (existing)")]
+        DRV[("DR Vault (existing)")]
     end
     subgraph TGT["Target networks"]
         WIN["Windows / DB / web consoles"]
@@ -463,60 +495,238 @@ flowchart TB
 ```
 
 CND analysts start sessions from PVWA in the same way as consuming teams, so every CND session is ticket
-checked. The CND pools have their own VIPs, Safes and roles (FR9). CND shares the Vault, PVWA, CPM and
-PTA with consuming teams. The CND boundary is therefore enforced by Safe permissions and roles at those
-shared tiers, and by separate pools at the session tier. The architecture forum confirms that boundary
-at G1.
+checked. The CND pools have their own VIPs, Safes, roles and network zone (Z4b) (FR9). CND shares the
+Vault, PVWA, CPM and PTA with consuming teams. The CND boundary is therefore enforced in two ways: by
+Safe permissions and roles at those shared tiers, and by separate pools in a separate zone at the
+session tier. The architecture forum confirms that boundary at G1.
 
-### Network zones and flows
+### Network zones, sites and flows
 
-**Figure 3 — Zones and main session flows** (management, monitoring, patching, backup and CPM flows are
-listed in [Network: firewall and DNS](#network-firewall-and-dns) and Attachment A rather than drawn)
+This section gives network and security architects the placement of every component, by zone and by
+site, and every flow between zones.
+
+- The zone model is *Proposed*. Network maps each zone to the existing zones, VLANs and firewalls of
+  each classification before G1 (Q51).
+- Each classification has the same zone model.
+- Zones Z3 to Z6 exist at both the primary and the secondary site.
+- A firewall separates every zone from every other zone. The default rule is deny, and only the flows in
+  the zone-to-zone flow matrix below are allowed.
+
+#### Zone model
+
+| Zone | Purpose | Components | Trust level | Inbound allowed from | Controls at the boundary |
+|---|---|---|---|---|---|
+| Z1 User zone | Where privileged users and auditors work | Consuming-team administrator workstations; auditor workstations | Low | Not applicable (users initiate) | Smart-card login to PVWA; outbound only to PVWA, the PSM/PSMP virtual servers and F5 DNS; direct administrative access to targets is blocked at enforcement |
+| Z2 CND zone | Where CND analysts work | CND workstations | Low | Not applicable (users initiate) | As Z1, but reaches only the CND virtual servers |
+| Z3 PAM access zone | Entry point for users | F5 LTM pair and virtual servers (new); PVWA nodes and their load balancer (existing) | Medium | Z1 and Z2 on 443, 3389 and 22 only | TLS to PVWA; TCP pass-through for RDP and SSH (no termination); F5 connection logging; source IP preserved |
+| Z4a PAM session zone (consumer) | Runs consumer privileged sessions | Consumer PSM and PSMP nodes | High | The Z3 F5 virtual servers only (3389, 22); management from Z6 and Z8 | PSM/PSMP hardening and AppLocker; no interactive logon except through PSM; outbound only to Z5, Z7, Z3 (PVWA), and named Z8 services |
+| Z4b PAM session zone (CND) | Runs CND privileged sessions, separate from consumers (FR9) | CND PSM and PSMP nodes | High | The Z3 CND virtual servers only; management from Z6 and Z8 | As Z4a; no flows between Z4a and Z4b |
+| Z5 PAM core zone | Holds every credential and recording | Vault (primary site), DR Vault (secondary site), both existing | Highest | Z3, Z4a, Z4b and Z6 on 1858 only; Z6 Vault administration VMs on 9022 | Vault firewall (only 1858 and 9022 open); no interactive logon; Vault-to-DR replication on 1858; outbound only syslog to PTA and Cribl, NTP and backup |
+| Z6 PAM management zone | Runs CyberArk back-end and administration services | CPM (existing, active at primary, standby at secondary); PTA; Vault administration VMs (one per site) | High | Z4a, Z4b (administrator sessions through PSM to the Vault administration VMs); Z5 (syslog to PTA); Z8 (domain controller events to PTA) | Access only through PSM, with a ticket and recording; CPM reaches Z7 only on the ports each platform needs |
+| Z7 Target zones | The systems administered | Windows servers, Linux/Unix servers, network devices, SQL Server and PostgreSQL databases, web administration consoles, out-of-band management | Varies | Z4a, Z4b (sessions) and Z6 (CPM) only, after enforcement; plus the approved management systems in Attachment A | Windows GPOs and Linux `sshd` restrictions at enforcement; direct access from Z1 and jump hosts removed |
+| Z8 Enterprise services zone | Shared services | AD, DNS, NTP; PKI CRL/OCSP and the internet proxy to external CAs; F5 DNS; ServiceNow; Cribl, Splunk, DSOC; monitoring; patching; EDR; backup; Ansible controller | High | As each service requires (listed in the flow matrix) | Each service's own controls |
+
+**Figure 4 — Network zones and component placement (one production classification).** Each arrow is
+one or more rows of the zone-to-zone flow matrix below (F1 to F26); the labels give the flow numbers and
+main ports. Every PAM zone also reaches Z8 for AD, logging and operations (F15, F16 and F21); those
+flows are listed in the matrix but not drawn, to keep the figure readable.
 
 ```mermaid
-flowchart LR
-    subgraph UZ["User zone"]
-        WS["Workstations"]
+flowchart TB
+    subgraph Z1["Z1 User zone"]
+        WS["Administrator workstations"]
+        AW["Auditor workstations"]
     end
-    subgraph CZ["CND zone"]
+    subgraph Z2["Z2 CND zone"]
         CWS["CND workstations"]
     end
-    subgraph PZ["PAM zone"]
-        PVWA["PVWA VIP"]
-        PSMV["PSM VIP"]
-        PSMPV["PSMP VIP"]
-        CNDV["CND PSM / PSMP VIPs"]
-        VLT[("Vault / DR Vault")]
-        PTA["PTA"]
+    subgraph Z3["Z3 PAM access zone"]
+        LTM["F5 LTM virtual servers:<br/>psm, psmp, psm-cnd, psmp-cnd"]
+        PVWA["PVWA x4 (existing)"]
     end
-    subgraph TZ["Target zones"]
-        T["Targets"]
+    subgraph Z4a["Z4a PAM session zone - consumer"]
+        PSM["PSM x4"]
+        PSMP["PSMP x4"]
     end
-    subgraph SZ["Enterprise / SIEM"]
+    subgraph Z4b["Z4b PAM session zone - CND"]
+        PSMn["PSM x2"]
+        PSMPn["PSMP x2"]
+    end
+    subgraph Z5["Z5 PAM core zone"]
+        V[("Vault (existing)")]
+        DRV[("DR Vault (existing)")]
+    end
+    subgraph Z6["Z6 PAM management zone"]
+        CPM["CPM x2 (existing)"]
+        PTA["PTA x1"]
+        VADM["Vault admin VM x2"]
+    end
+    subgraph Z7["Z7 Target zones"]
+        TW["Windows servers"]
+        TL["Linux / Unix servers"]
+        TN["Network devices"]
+        TD["SQL Server, PostgreSQL"]
+        TC["Web consoles, OOB"]
+    end
+    subgraph Z8["Z8 Enterprise services zone"]
+        GTM["F5 DNS"]
+        AD["AD, DNS, NTP"]
         SN["ServiceNow"]
-        CR["Cribl workers"]
-        DC["Domain controllers"]
+        CR["Cribl, Splunk, DSOC"]
+        PKI["PKI, proxy"]
+        OPS["Monitoring, patching,<br/>EDR, backup, Ansible"]
     end
-    WS & CWS -->|"443"| PVWA
-    WS -->|"3389"| PSMV
-    WS -->|"22"| PSMPV
-    CWS -->|"3389 / 22"| CNDV
-    PSMV & PSMPV & CNDV -->|"1858"| VLT
-    PSMPV & CNDV -->|"443 ticket check"| PVWA
-    PVWA -->|"443"| SN
-    PSMV & CNDV -->|"3389, DB, HTTPS"| T
-    PSMPV & CNDV -->|"22"| T
-    PSMV & PSMPV -->|"DNS, Kerberos, LDAPS"| DC
-    VLT & DC -->|"events"| PTA
-    PZ -->|"syslog / forwarder"| CR
-    WS -. "blocked at enforcement" .-> T
+    Z1 -->|"F1, F2: 443, 3389, 22"| Z3
+    Z2 -->|"F1, F3: 443, 3389, 22"| Z3
+    Z3 -->|"F5: 3389, 22"| Z4a
+    Z3 -->|"F5: 3389, 22"| Z4b
+    Z4a -->|"F23, F24: 3389, 22, 1433, 5432, 443"| Z7
+    Z4b -->|"F23, F24"| Z7
+    Z6 -->|"F25: CPM platform ports"| Z7
+    Z3 & Z4a & Z4b & Z6 -->|"F9, F10: 1858, 9022"| Z5
+    Z5 -->|"F12: syslog"| Z6
+    Z3 <-->|"F7, F8 out; F17 to F20 in"| Z8
+    Z1 -. "F26: denied at enforcement" .-> Z7
 ```
 
-[Network: firewall and DNS](#network-firewall-and-dns) lists every flow, and the firewall matrix for each classification is Attachment A (KD19).
+#### Primary and secondary sites
+
+The existing platform is active at the primary site and on standby at the secondary site:
+- the Vault is active at the primary site, and the DR Vault at the secondary site is passive and kept up
+  to date by replication;
+- CPM is active at the primary site and on standby at the secondary site;
+- all four PVWA nodes are active, two at each site.
+
+The new session pools are active at both sites. The F5 design that achieves this is in
+[High availability, load balancing and sites](#high-availability-load-balancing-and-sites) (DEC-21).
+
+**Figure 5 — Primary and secondary sites (one production classification)**
+
+```mermaid
+flowchart TB
+    U["Users: Z1 and Z2"]
+    GTM["F5 DNS wide IPs: psm, psmp, psm-cnd, psmp-cnd<br/>answer with a healthy site, TTL 30 s"]
+    U -->|"1. DNS query"| GTM
+    U -->|"2a. RDP or SSH, primary"| PLTM
+    U -->|"2b. RDP or SSH, secondary"| SLTM
+    subgraph PRI["Primary site"]
+        subgraph P3["Z3 access"]
+            PLTM["F5 LTM pair<br/>4 virtual servers"]
+            PPV["PVWA x2"]
+        end
+        subgraph P4["Z4a / Z4b session"]
+            PPSM["Consumer PSM x2<br/>+ contingency slots"]
+            PPSMP["Consumer PSMP x2"]
+            PCND["CND PSM x1, CND PSMP x1"]
+        end
+        subgraph P5["Z5 core"]
+            PV[("Vault: active")]
+        end
+        subgraph P6["Z6 management"]
+            PCPM["CPM: active"]
+            PPTA["PTA"]
+            PVA["Vault admin VM:<br/>administers Vault"]
+        end
+    end
+    subgraph SECS["Secondary site"]
+        subgraph S3["Z3 access"]
+            SLTM["F5 LTM pair<br/>4 virtual servers"]
+            SPV["PVWA x2"]
+        end
+        subgraph S4["Z4a / Z4b session"]
+            SPSM["Consumer PSM x2<br/>+ contingency slots"]
+            SPSMP["Consumer PSMP x2"]
+            SCND["CND PSM x1, CND PSMP x1"]
+        end
+        subgraph S5["Z5 core"]
+            SV[("DR Vault: passive")]
+        end
+        subgraph S6["Z6 management"]
+            SCPM["CPM: standby"]
+            SPTA["PTA rebuild target"]
+            SVA["Vault admin VM:<br/>administers DR Vault"]
+        end
+    end
+    GTM -. "health monitor, iQuery 4353" .-> PLTM & SLTM
+    PLTM --> PPSM & PPSMP & PCND
+    SLTM --> SPSM & SPSMP & SCND
+    P4 -->|"1858"| PV
+    S4 -->|"1858, cross-site"| PV
+    P4 ~~~ P6
+    S4 ~~~ S5
+    S4 ~~~ S6
+    PV -->|"replication 1858"| SV
+```
+
+**Site placement** (per production classification):
+
+| Component | Primary site | Secondary site | Role | On loss of the primary site |
+|---|---|---|---|---|
+| F5 LTM HA pair | 1 pair, 4 virtual servers | 1 pair, 4 virtual servers | Active at both sites | F5 DNS stops answering with the primary virtual servers; users reconnect to the secondary site |
+| PVWA (existing) | 2 | 2 | Active at both sites | The secondary PVWA nodes continue |
+| Consumer PSM | 2 (+ contingency) | 2 (+ contingency) | Active at both sites | Half capacity: 2 nodes, up to 120 sessions |
+| Consumer PSMP | 2 | 2 | Active at both sites | Half capacity |
+| CND PSM | 1 | 1 | Active at both sites | 1 node remains |
+| CND PSMP | 1 | 1 | Active at both sites | 1 node remains |
+| Vault (existing) | Active | — | Active | The CyberArk team fails over to the DR Vault under the existing Vault DR procedure; PSM, PSMP, PTA and CPM reconnect to it (DR-02) |
+| DR Vault (existing) | — | Passive | Replica | Becomes active after failover |
+| CPM (existing) | Active | Standby | Active / standby | The standby CPM is activated under the existing DR procedure |
+| PTA | 1 | — | Single node (DEC-05) | Rebuilt at the secondary site from automation and configuration backup (RTO 2 business days, R25) |
+| Vault administration VM | 1 (administers the Vault) | 1 (administers the DR Vault; standby for the Vault) | Both available (DEC-07) | The secondary VM continues; no rebuild wait |
+
+#### Zone-to-zone flow matrix
+
+This matrix shows the flows between zones. [Network: firewall and DNS](#network-firewall-and-dns) lists
+the same flows by component, and Attachment A is the rule-level firewall matrix (KD19). Flows within a
+zone, and the F5's own high-availability traffic, are not listed.
+
+| # | From zone | To zone | Ports | Initiated by | Purpose | When |
+|---|---|---|---|---|---|---|
+| F1 | Z1, Z2 | Z3 (PVWA) | TCP 443 | User | PVWA portal, PVWA *Connect* | Phase 1 |
+| F2 | Z1 | Z3 (F5 consumer virtual servers) | TCP 3389, 22 | User | Sessions to the consumer pools | Phase 1 |
+| F3 | Z2 | Z3 (F5 CND virtual servers) | TCP 3389, 22 | User | Sessions to the CND pools | Phase 1 |
+| F4 | Z1, Z2 | Z8 (F5 DNS) | UDP/TCP 53 | User workstation (through its DNS resolver) | Resolve wide IPs | Phase 1 |
+| F5 | Z3 (F5) | Z4a, Z4b | TCP 3389, 22 | F5 (pass-through) | Load-balanced sessions to local nodes | Phase 1 |
+| F6 | Z4a, Z4b (PSMP) | Z3 (PVWA) | TCP 443 | PSMP | Ticket validation for SSH sessions [CA] | Phase 1 |
+| F7 | Z3 (PVWA) | Z8 (ServiceNow) | TCP 443 | PVWA | Ticket validation | Phase 1 |
+| F8 | Z3 (PVWA) | Z8 (proxy), then the CAs' CRL/OCSP | Proxy port, then TCP 80 | PVWA | PKIPN revocation checks (D16) | Phase 1 |
+| F9 | Z3, Z4a, Z4b, Z6 | Z5 | TCP 1858 | Component | Vault protocol | Phase 1 |
+| F10 | Z6 (Vault administration VMs) | Z5 | TCP 9022 (to be validated) | Vault administration VM | PARAgent remote administration | Phase 1 |
+| F11 | Z5 (Vault) | Z5 (DR Vault), cross-site | TCP 1858 | Vault | Replication (existing) | Existing |
+| F12 | Z5 | Z6 (PTA) | TCP 514, or 6514 with TLS (to be validated) | Vault | Vault audit for analytics | Phase 1 |
+| F13 | Z8 (domain controllers, or SIEM) | Z6 (PTA) | As decided at G1 (Q37) | Source | Domain controller events for analytics | Phase 1 |
+| F14 | Z6 (PTA) | Z3 (PVWA) | TCP 443 (to be validated) | PTA | PTA alerts in PVWA | Phase 1 |
+| F15 | Z4a, Z4b, Z6 | Z8 (AD) | TCP/UDP 53, TCP/UDP 88, TCP 636, TCP 445 | Component | Name resolution, Kerberos, LDAPS, Group Policy, AD Bridge | Phase 1 |
+| F16 | Z3, Z4a, Z4b, Z5, Z6 | Z8 (Cribl) | TCP 6514 (syslog over TLS), or TCP 9997 (Splunk forwarder) | Component | Logging | Phase 1 |
+| F17 | Z8 (monitoring) | Z3, Z4a, Z4b, Z6 | Monitoring tool ports (Attachment A) | Monitoring | Health | Phase 1 |
+| F18 | Z8 (monitoring) | Z3 (F5 management) | TCP 443 (iControl REST) | Monitoring | Drain a failed node (R9) | Phase 1 |
+| F19 | Z8 (F5 DNS) | Z3 (F5 LTM) | TCP 4353 (iQuery) | F5 DNS | Site health for global load balancing (DEC-21) | Phase 1 |
+| F20 | Z8 (Ansible controller) | Z4a, Z4b, Z6 | TCP 5986 (WinRM), TCP 22 (2222 on PSMP) | Ansible | Build and configuration | Phase 1 |
+| F21 | Z4a, Z4b, Z5, Z6 | Z8 (patching, NTP, CRL/OCSP, EDR, backup) | Each service's ports (Attachment A) | Component | Operations | Phase 1 |
+| F22 | Z4a, Z4b (through PSM) | Z4a, Z4b, Z6 | TCP 3389 (PSM, Vault administration VMs), TCP 2222 (PSMP), TCP 22 (PTA) | CyberArk administrator, through PSM | Server administration | Phase 1 |
+| F23 | Z4a, Z4b (PSM) | Z7 | TCP 3389; TCP 1433 (SQL Server); TCP 5432 (PostgreSQL); TCP 443 (web consoles); other ports from Attachment H | PSM | Sessions to targets | Before each wave (G5) |
+| F24 | Z4a, Z4b (PSMP) | Z7 | TCP 22 | PSMP | SSH sessions to targets | Before each wave (G5) |
+| F25 | Z6 (CPM) | Z7 | The ports each platform needs (for example TCP 445 and RPC for Windows, TCP 22, database ports) | CPM | Verify, change and reconcile passwords | Before each wave (G5) |
+| F26 | Z1, jump hosts | Z7 | Administrative ports | — | **Denied**, then jump hosts retired | At each wave's enforcement (G6) |
+
+There are no flows between Z4a and Z4b, and none from Z1 or Z2 to Z5, Z6 or (after enforcement) Z7.
+
+#### Security controls at each trust boundary
+
+| Boundary | Authentication | Encryption | Inspection | Logging |
+|---|---|---|---|---|
+| Z1/Z2 → Z3 (PVWA) | Smart card (PKIPN), with revocation checking | TLS 1.2 or later | Not inspected (TLS end to end to PVWA) | PVWA and F5 logs to Splunk |
+| Z1/Z2 → Z3 → Z4 (sessions) | RDP: one-time token from PVWA in the RDP file; SSH: AD plus the PVWA MFA-caching key | RDP TLS (NLA to targets); SSH | F5 pass-through, no decryption | F5 connection log; PSM/PSMP session log and recording |
+| Z4 → Z5 (Vault) | CyberArk component credentials | Vault protocol encryption (1858) | Vault firewall | Vault audit to PTA and Splunk |
+| Z4/Z6 → Z7 (targets) | Vaulted privileged credential, never shown to the user | RDP TLS, SSH, TLS for web and database where the target supports it | None | Target logs; bypass use cases in Splunk |
+| Z3 → Z8 (ServiceNow) | Dedicated integration account, vaulted | TLS | None | ServiceNow validation log to Splunk |
+| All PAM zones → Z8 (Cribl) | Certificate (syslog TLS) or forwarder token | TLS | None | Cribl and Splunk |
+| Between classifications | None: no flows | — | — | — |
+| Into SECRET (media only) | CDS approval process | As the CDS defines | CDS content checks | CDS records |
 
 ### Session flows
 
-**Figure 4 — RDP, database and web sessions through PVWA and PSM**
+**Figure 6 — RDP, database and web sessions through PVWA and PSM**
 
 ```mermaid
 sequenceDiagram
@@ -544,7 +754,7 @@ sequenceDiagram
     end
 ```
 
-**Figure 5 — SSH sessions through PSMP**
+**Figure 7 — SSH sessions through PSMP**
 
 ```mermaid
 sequenceDiagram
@@ -585,49 +795,29 @@ If that test fails, the architecture forum selects one of the fallbacks in Attac
 
 ### High availability, load balancing and sites
 
-**Figure 6 — Pools split across two sites**
-
-```mermaid
-flowchart TB
-    U["Users"] --> VIP1["PSM VIP"]
-    U --> VIP2["PSMP VIP"]
-    subgraph S1["Site 1"]
-        P1["PSM 1"]
-        P2["PSM 2"]
-        Q1["PSMP 1"]
-        Q2["PSMP 2"]
-        V1[("Vault")]
-    end
-    subgraph S2["Site 2"]
-        P3["PSM 3"]
-        P4["PSM 4"]
-        Q3["PSMP 3"]
-        Q4["PSMP 4"]
-        V2[("DR Vault")]
-    end
-    VIP1 --> P1 & P2 & P3 & P4
-    VIP2 --> Q1 & Q2 & Q3 & Q4
-    MON["Monitoring"] -. "service down:<br/>drain node" .-> VIP1
-    MON -. "drain" .-> VIP2
-    V1 -->|replication| V2
-    P1 & P2 & P3 & P4 & Q1 & Q2 & Q3 & Q4 --> V1
-```
+Figure 5 shows the placement of every node by site. The F5 design (DEC-21) follows CyberArk's
+recommendation of DNS-based load balancing with pass-through [CA]: F5 DNS chooses the site, and the F5
+LTM at that site balances only its local nodes in TCP pass-through mode.
 
 | Design item | Design |
 |---|---|
-| Pools | Each production classification has a consumer PSM pool (4 nodes), a consumer PSMP pool (4), a CND PSM pool (2) and a CND PSMP pool (2). |
-| Load balancing approach | F5 BIG-IP load balancers in each classification (Q28) present each pool as one virtual server, in TCP pass-through mode (DEC-13). CyberArk recommends DNS load balancing and SSL pass-through [CA]. The F5 keeps pass-through and adds health monitors and monitoring-driven drain, which DNS load balancing alone does not provide. The architecture forum confirms this choice at G1 against the 14.6 load-balancing guidance. |
+| Pools | Each production classification has a consumer PSM pool (4 nodes), a consumer PSMP pool (4), a CND PSM pool (2) and a CND PSMP pool (2). Each pool is split evenly across the primary and secondary sites. |
+| Local load balancing | Each site has an F5 LTM HA pair in the PAM access zone (Z3). Each service (psm, psmp, psm-cnd, psmp-cnd) has one LTM virtual server per site, which balances only the nodes at that site. That gives 4 virtual servers per site, 8 per classification and 24 in production. |
+| Global load balancing | Each service has an F5 DNS (GTM) wide IP: `psm-<env>`, `psmp-<env>`, `psm-cnd-<env>` and `psmp-cnd-<env>`. The wide IP answers with both sites' virtual servers in proportion (active-active). GTM persistence keeps each client on the same site, and the TTL is 30 seconds. PVWA writes the wide-IP name into the RDP file, and users connect to `psmp-<env>` for SSH. |
+| Why this design | CyberArk recommends DNS load balancing with SSL pass-through [CA]. F5 DNS gives DNS load balancing with health awareness, and the LTM gives local health checks, drain and connection logging. Local-only pools mean the nodes' return traffic always passes through their own site's F5. Routing therefore stays symmetric without source NAT, and the client source IP is preserved for logs and DSOC use cases. |
+| Mode | TCP pass-through for RDP and SSH. The F5 does not terminate TLS or SSH. |
+| Source address | SNAT is off. The F5 LTM is the default gateway of the PSM and PSMP nodes at its site, so the client source IP reaches the node. The LLD confirms the routing (Q51). |
+| Persistence | An LTM source-address persistence profile for RDP, with a timeout of at least 3,900 seconds (65 minutes), so that a user who reconnects within the idle disconnect period ([Session policy](#session-policy)) returns to the same node. SSH needs no persistence. |
+| Idle timeout | The LTM TCP profile idle timeout is at least 3,900 seconds (65 minutes), longer than the PSM idle disconnect of 60 minutes ([Session policy](#session-policy)). Active sessions send keep-alives and are not cut. |
+| Health checks | An LTM TCP monitor on 3389 or 22, every 10 seconds, with a 31-second timeout (3 missed checks). In addition, if the PSM or PSMP service fails while the port stays open, monitoring disables the pool member through the F5 iControl REST API (R9). F5 DNS monitors each site's virtual server over iQuery (TCP 4353). The LLD confirms these values. |
+| Node failure | The LTM removes the node, sessions on it end, and users reconnect to another node at the same site. Recordings are expected to be kept up to the point of failure; HA test HA-04 in [Testing](#testing) confirms this. |
+| Site failure | F5 DNS stops answering with the failed site's virtual servers. Users reconnect, after at most the 30-second TTL, to the surviving site, which carries half of each pool (NFR1). The site-loss test HA-03 confirms this. |
+| Fallback if F5 DNS is not available | If the F5 DNS module is not licensed or not available in a classification (Q52), each service gets a static DNS record pointing at the primary site's virtual server, and its pool includes the secondary site's nodes, with SNAT for those nodes. On loss of the primary site, Network repoints the record manually (R29). |
 | CyberArk configuration | Every PSM in a pool runs the same version [CA]. Each PSM keeps its own server ID (`PSMServer`, then `PSM-<computer name>`), and platforms reference the PSM server ID [CA]. |
-| Mode | TCP pass-through for RDP and SSH; the load balancer does not terminate TLS or SSH. |
-| Source address | The F5 preserves the client's source IP address to the node (SNAT disabled, with the pool members routing back through the F5), because PSM/PSMP logs and the DSOC use cases depend on it. If routing does not allow this, SNAT automap is used and the F5 logs each connection's original and translated addresses to Splunk. The LLD confirms the choice. |
-| Persistence | An F5 source-address persistence profile for RDP, with a timeout of at least 3,900 seconds (65 minutes), so that a user who reconnects within the idle disconnect period ([Session policy](#session-policy)) returns to the same node. SSH needs no persistence. |
-| Idle timeout | The F5 TCP profile idle timeout is at least 3,900 seconds (65 minutes), longer than the PSM idle disconnect of 60 minutes ([Session policy](#session-policy)). Active sessions send keep-alives and are not cut by the load balancer. |
-| Health checks | An F5 TCP monitor on 3389 or 22, every 10 seconds, with a 31-second timeout (3 missed checks). In addition, if the PSM or PSMP service fails while the port stays open, monitoring disables the pool member through the F5 iControl REST API (R9). The LLD confirms these values. |
-| Live monitoring | Live monitoring uses the PSMAdminConnect user of the node that runs the session, so it reaches that node directly rather than through the VIP [CA]. |
-| Site distribution | Each pool is split evenly across the primary and secondary sites, so the loss of a site leaves half of each pool. |
-| Failover behaviour | Sessions on a failed node end, and users reconnect to a healthy node. Recordings are expected to be kept up to the point of failure; HA test HA-04 in [Testing](#testing) confirms this. |
-| PSMP host keys | All PSMP nodes in a pool present the same SSH host key, so users do not see host-key warnings when routed to another node. The CyberArk team generates one host key pair per pool, stores it in a dedicated Safe and deploys it with Ansible. The key is replaced whenever a pool is rebuilt and at least every two years. |
-| Certificates | The PSM RDP certificate on each node includes the VIP's fully qualified domain name (FQDN). |
+| Live monitoring | Live monitoring uses the PSMAdminConnect user of the node that runs the session, so it reaches that node directly rather than through the virtual server [CA]. |
+| PSMP host keys | All PSMP nodes of a service, at both sites, present the same SSH host key, so users see no host-key warning when routed to another node or site. The CyberArk team generates one host key pair per service, stores it in a dedicated Safe and deploys it with Ansible. The key is replaced whenever a pool is rebuilt, and at least every two years. |
+| Certificates | The PSM RDP certificate on each node has the node name and the wide-IP FQDN in its subject alternative names. |
+| PVWA (existing) | The existing PVWA load balancer is unchanged. Network reviews whether to move it to the same F5 DNS model in the LLD. |
 
 ### Platform and versions
 
@@ -662,7 +852,7 @@ change to this IA, with its own VMs, VIP, certificates and tests.
 
 ### Ticketing (ServiceNow)
 
-**Figure 7 — Ticket decision**
+**Figure 8 — Ticket decision**
 
 ```mermaid
 flowchart TD
@@ -685,7 +875,7 @@ flowchart TD
 | Target CI match | Not in the baseline (A15). If the 14.6 integration can send the target (checked in non-production in Phase 1) and the CMDB data is verified (Q50), the architecture forum may add CI matching at G2, using a ServiceNow Scripted REST API with a small custom ticketing plugin (Attachment J, I4). If the custom plugin is chosen, the CyberArk team owns its code, support and lifecycle. |
 | Integration account | A dedicated ServiceNow user with read-only access (ACLs) to the fields needed. Its credential is vaulted and rotated by CPM. |
 | Failure | If ServiceNow is unreachable, slow (no answer within 10 seconds) or returns an error, or the ticket is invalid, the session is denied by default. |
-| Emergency path | Only members of the emergency role group for that classification may use it; Security approves the membership, with no more than 10 people per classification. The user records a reason, and a member of the emergency approver group approves the request in PVWA through dual control. Because approval happens in PVWA, the path works while ServiceNow is down. Access expires after 4 hours. Every use raises an immediate DSOC alert. The user raises a retrospective ticket within one business day, and Security reviews every use the next business day. For PSMP, the emergency path is used through a PVWA access request followed by PSM-SSH. Whether 14.6 supports a ticket bypass for emergency roles natively is checked in non-production in Phase 1 (Q40); if it does not, the emergency path uses the break-glass flow in Figure 8. Security approves this design at G1, subject to the Q40 test result, and confirms it at G2 (DEC-14). |
+| Emergency path | Only members of the emergency role group for that classification may use it; Security approves the membership, with no more than 10 people per classification. The user records a reason, and a member of the emergency approver group approves the request in PVWA through dual control. Because approval happens in PVWA, the path works while ServiceNow is down. Access expires after 4 hours. Every use raises an immediate DSOC alert. The user raises a retrospective ticket within one business day, and Security reviews every use the next business day. For PSMP, the emergency path is used through a PVWA access request followed by PSM-SSH. Whether 14.6 supports a ticket bypass for emergency roles natively is checked in non-production in Phase 1 (Q40); if it does not, the emergency path uses the break-glass flow in Figure 9. Security approves this design at G1, subject to the Q40 test result, and confirms it at G2 (DEC-14). |
 | Audit | The ticket is stored with the session and in the Vault audit. ServiceNow logs each validation call. Both logs are sent to Splunk. |
 
 The options not chosen (SM9 and others) are in Attachment J.
@@ -703,7 +893,7 @@ The options not chosen (SM9 and others) are in Attachment J.
 | Segregation of duties | CyberArk administrators administer the platform only from the Vault administration VM through PSM, so their sessions are recorded. They cannot delete recordings or audit records. Security reviews a sample of their sessions every month (R26). |
 | Certificates | [PKI](#pki). |
 
-**Figure 8 — Break-glass check-out and check-in**
+**Figure 9 — Break-glass check-out and check-in**
 
 ```mermaid
 flowchart LR
@@ -720,7 +910,7 @@ flowchart LR
 **Which path applies when something fails:**
 - **ServiceNow is down:** the emergency path ([Ticketing (ServiceNow)](#ticketing-servicenow)).
 - **PSM or PSMP is down, but the Vault and PVWA work:** break-glass check-out with *Retrieve*
-  (Figure 8), following the outage runbook (R23).
+  (Figure 9), following the outage runbook (R23).
 - **The Vault or PVWA is down:** CyberArk's offline emergency-access procedure (R13).
 
 The CyberArk lead maintains the offline procedure. The CyberArk team and Security test it every six
@@ -742,21 +932,30 @@ months and record the result (KD27).
 
 ### Logging and monitoring
 
-**Figure 9 — Logging and monitoring paths**
+**Figure 10 — Logging paths, by zone** (monitoring and load balancer drain are in
+[Monitoring and control](#monitoring-and-control) and Figure 5)
 
 ```mermaid
 flowchart LR
-    V["Vault audit<br/>(syslog via XSL)"] --> CR["Cribl workers<br/>(per classification)"]
-    PSM["PSM / PSMP logs"] --> CR
-    PTA["PTA alerts (syslog)"] --> CR
-    PV["PVWA / CPM logs"] --> CR
-    SNL["ServiceNow validation log"] --> CR
-    OS["OS logs of new servers"] --> CR
-    CR --> SP["Splunk indexes<br/>+ CyberArk add-on"]
-    SP --> DS["DSOC:<br/>use cases, triage"]
-    SP --> DB["Dashboards"]
-    MON["Monitoring tool"] --> H["Health, capacity,<br/>certificate expiry"]
-    H -. "drain on failure" .-> LB["Load balancer"]
+    subgraph PZ["PAM zones Z3 to Z6 (both sites)"]
+        V["Z5 Vault audit<br/>(syslog via XSL)"]
+        PSM["Z4a/Z4b PSM and PSMP logs"]
+        PTA["Z6 PTA alerts (syslog)"]
+        PV["Z3 PVWA, Z6 CPM logs"]
+        OS["Operating system logs<br/>of every new server"]
+        F5["Z3 F5 connection logs"]
+    end
+    subgraph Z8["Z8 Enterprise services zone"]
+        SNL["ServiceNow validation log"]
+        CR["Cribl workers<br/>(per classification)"]
+        SP["Splunk indexes<br/>+ CyberArk add-on"]
+        DS["DSOC: use cases, triage"]
+        DB["Dashboards"]
+    end
+    PZ -->|"syslog TLS 6514 or forwarder 9997"| CR
+    SNL --> CR
+    CR --> SP
+    SP --> DS & DB
 ```
 
 [SIEM: Cribl, Splunk and DSOC](#siem-cribl-splunk-and-dsoc) gives the SIEM detail (sources and use cases), and [Monitoring and control](#monitoring-and-control) the monitoring detail.
@@ -778,7 +977,7 @@ flowchart LR
 | Item | Design |
 |---|---|
 | Purpose | It is the only place where Vault administration runs. It hosts the PrivateArk Client, PARClient (remote control of the Vault service), Vault and DR Vault health and backup tools, installers and scripts. Nobody logs on interactively to the Vault servers. |
-| Count | **One per classification**, administering the Vault and the DR Vault (DEC-07). If it fails, it is rebuilt from automation within 1 business day. Urgent Vault administration in that time follows the offline emergency-access procedure (R13). |
+| Count | **Two per classification**, one at each site (DEC-07). The primary-site VM administers the Vault; the secondary-site VM administers the DR Vault and can take over Vault administration if the primary-site VM or site fails. A failed VM is rebuilt from automation within 1 business day, while the other VM continues. |
 | Build | Windows Server 2022 hardened SOE, with no internet, email or browsing; an AppLocker allow-list of administration tools; EDR; monthly patching. |
 | Access | Only named CyberArk administrators, through PSM (recorded), with a ticket and vaulted credentials. There is no direct RDP. |
 | Network | Outbound to the Vault and DR Vault on 1858 and on the PARAgent port (9022, to be validated in non-production in Phase 1), and to PVWA on 443. All other outbound flows are limited to the patching, logging, time, EDR and backup services listed in Attachment A. |
@@ -856,15 +1055,100 @@ below shows the scale. Measurements from non-production and the pilot replace it
 
 DCE owns the Vault and DR Vault storage expansion and gives its lead time before G1.
 
-**Build specification.** Attachment B is the build sheet for each role and classification; it fixes
-the values below at G2.
+**Build specification and totals.** [Resource summary](#resource-summary) gives the size of every VM and the
+totals for CPU, memory, storage, network addresses, DNS records, certificates and licences.
 
-| Role | vCPU | RAM | Disks | NICs | Notes |
+### Resource summary
+
+These tables bring together every resource the design needs. The values are planning values: the
+CyberArk architect validates them against CyberArk guidance before G2, and the pilot may adjust them.
+Attachment B, the build sheet, is the record of what is built. The totals are calculated from Tables R1
+and R2.
+
+**Table R1 — Build specification for each VM role**
+
+| Role | Operating system | vCPU | RAM (GB) | OS disk (GB) | Data disk (GB) | NICs | Basis |
+|---|---|---|---|---|---|---|---|
+| PSM | Windows Server 2022 | 16 | 32 | 100 | 150, SSD tier (temporary recordings) | 1 | CyberArk 31–60 sessions tier [CA]; design limit 42 sessions per node |
+| PSMP | RHEL 8 | 8 | 16 | 40 | 60 (temporary workspace) | 1 | Above CyberArk's minimum of 4 cores, 8 GB, 10 + 40 GB [CA] |
+| PTA | RHEL 8, minimal | 8 | 32 | 100 | 400 | 1 | To be validated against CyberArk's PTA specification |
+| Vault administration VM | Windows Server 2022 | 4 | 16 | 100 | — | 1 | Administration tools only |
+| Non-production PSM | Windows Server 2022 | 8 | 16 | 100 | 80, SSD tier | 1 | CyberArk minimum for PSM [CA] |
+| Non-production PSMP | RHEL 8 | 4 | 8 | 40 | 40 | 1 | CyberArk minimum for PSMP [CA] |
+| Non-production PTA | RHEL 8, minimal | 4 | 16 | 100 | 200 | 1 | Reduced for test volumes |
+| Non-production Vault administration VM | Windows Server 2022 | 4 | 16 | 100 | — | 1 | As production |
+
+**Table R2 — Number of VMs by role, site and classification**
+
+| Role | Primary site (each classification) | Secondary site (each classification) | Each classification | Production (3 classifications) | Non-production (PROTECTED) |
 |---|---|---|---|---|---|
-| PSM (Windows) | 8 (minimum) to 16 | 16–32 GB | 80 GB or more for the operating system; 80 GB or more of SSD-tier storage for temporary recordings | 1 | RAM is usually the limit |
-| PSMP (Linux, RHEL 8) | 4 (minimum) to 8 | 8 (minimum) to 16 GB | 10 GB + 40 GB minimum [CA]; 80 GB proposed | 1 | Dedicated machine [CA] |
-| PTA (Linux) | CyberArk recommended specification (the CyberArk architect fills in the figures before G2) | | | 1 | Sized by event volume |
-| Vault administration VM (Windows) | 4 | 8–16 GB | 100 GB | 1 | Administration tools only |
+| Consumer PSM | 2 | 2 | 4 | 12 | 2 |
+| Consumer PSMP | 2 | 2 | 4 | 12 | 2 |
+| CND PSM | 1 | 1 | 2 | 6 | — |
+| CND PSMP | 1 | 1 | 2 | 6 | — |
+| PTA | 1 | — | 1 | 3 | 1 |
+| Vault administration VM | 1 | 1 | 2 | 6 | 1 |
+| **Firm total** | **8** | **7** | **15** | **45** | **6** |
+| Contingency PSM, built only when triggered | PROTECTED 2, SECRET 1 | PROTECTED 1, SECRET 1 | PROTECTED 3, SECRET 2, OFFICIAL 0 | 5 | — |
+| Possible additions decided before G1 | RD Licensing server: 0–1 per classification (Q38); PVWA or CPM nodes: 0–3 per classification (Q36) | | | Up to 3 + up to 9 | — |
+
+**Table R3 — Total compute and storage**
+
+| Group | VMs | vCPU | RAM (GB) | OS disk (GB) | SSD data disk (GB) | Other data disk (GB) | Total VM disk (GB) |
+|---|---|---|---|---|---|---|---|
+| Each production classification | 15 | 160 | 352 | 1,140 | 900 | 760 | 2,800 |
+| Production, 3 classifications | 45 | 480 | 1,056 | 3,420 | 2,700 | 2,280 | 8,400 |
+| Contingency PSM (if triggered) | 5 | 80 | 160 | 500 | 750 | — | 1,250 |
+| Non-production | 6 | 32 | 80 | 480 | 160 | 280 | 920 |
+| **Grand total** | **56** | **592** | **1,296** | **4,400** | **3,610** | **2,560** | **10,570 (≈ 10.6 TB)** |
+
+| Recording storage (in addition to VM disk) | Per year, example one-year retention | Owner |
+|---|---|---|
+| Vault (primary site), all three classifications | 12–67 TB | DCE |
+| DR Vault (secondary site), all three classifications | 12–67 TB | DCE |
+| **Total recording storage** | **24–134 TB** | DCE |
+
+**Table R4 — Network resources**
+
+| Item | Each production classification | Production (3) | Contingency | Non-production | Total |
+|---|---|---|---|---|---|
+| NICs (one per VM) | 15 | 45 | 5 | 6 | **56** |
+| IP addresses for VMs | 15 | 45 | 5 | 6 | **56** |
+| F5 LTM virtual servers (one IP each): 4 services × 2 sites | 8 | 24 | — | 2 (single site) | **26** |
+| **Total new IP addresses** | 23 | 69 | 5 | 8 | **82** |
+| F5 DNS wide IPs (`psm`, `psmp`, `psm-cnd`, `psmp-cnd`) | 4 | 12 | — | — (plain DNS records) | **12** |
+| DNS A records: VMs | 15 | 45 | 5 | 6 | 56 |
+| DNS A records: virtual servers | 8 | 24 | — | 2 | 26 |
+| DNS service names (wide IPs, or plain records in non-production) | 4 | 12 | — | 2 | 14 |
+| **Total DNS records** | 27 | 81 | 5 | 10 | **96** |
+| Firewall flow groups (zone-to-zone flow matrix) | F1–F22 once; F23–F26 for each wave | | | F1–F22 inside the non-production zone | — |
+| Inter-site replication bandwidth (Vault to DR Vault) | — | 3–17 Mbit/s average, all classifications | — | — | Network confirms before G2 |
+
+F5 self IP addresses, the F5 high-availability network, and management addresses belong to Network and are
+not counted here.
+
+**Table R5 — Certificates**
+
+| Certificate | Production | Contingency | Non-production | Total | Issued by |
+|---|---|---|---|---|---|
+| PSM RDP (node name and wide-IP name in the subject alternative names) | 18 | 5 | 2 | 25 | Internal CA |
+| PTA | 3 | — | 1 | 4 | Internal CA |
+| Syslog TLS (one per new server sending logs to Cribl) | 45 | 5 | 6 | 56 | Internal CA |
+| **Total new certificates** | 66 | 10 | 9 | **85** | |
+| PVWA (PKIPN) | Existing PVWA certificates are kept; PKIPN adds the issuing CAs' certificates to the PVWA trust stores (WP33) | | | | — |
+
+**Table R6 — Licence quantities** (amounts are in [Costs](#costs))
+
+| Licence | Production | Contingency | Non-production | Total | Note |
+|---|---|---|---|---|---|
+| Windows Server: VMs | 24 (18 PSM, 6 Vault administration) | 5 | 3 (2 PSM, 1 Vault administration) | 32 | — |
+| Windows Server: core licences if licensed per VM (minimum 8 per VM) | 336 | 80 | 24 | 440 | Procurement confirms the licensing model (per VM or per host) before G1 |
+| RHEL subscriptions | 21 (18 PSMP, 3 PTA) | — | 3 (2 PSMP, 1 PTA) | 24 | — |
+| RDS CALs (Per User) | 645 | — | 10 | ≈ 655 | 292 PROTECTED, 237 SECRET, 116 OFFICIAL, each including 17 for CND |
+| Windows Server CALs | 645 | — | 10 | ≈ 655 | Procurement confirms enterprise agreement coverage |
+| F5 LTM virtual servers | 24 | — | 2 | 26 | — |
+| F5 DNS module | 1 per classification (12 wide IPs) | — | — | 3 | Availability to be confirmed (Q52) |
+| CyberArk PSM, PSMP, PTA entitlement | Per licence model | — | Non-production use | — | Q14 |
 
 ### Disaster recovery and resilience
 
@@ -877,7 +1161,7 @@ this table.
 | PSM / PSMP site | Site down | Half of each pool remains. | Reduced capacity until the site returns | As above |
 | Vault | Failover to DR Vault | PSM, PSMP, PTA and the Vault administration VM list both Vault addresses in their Vault configuration and reconnect to the DR Vault (to be validated in DR test DR-02). Recordings resume uploading. | The existing Vault DR RTO | The existing Vault DR RPO |
 | PTA | Server down | No analytics until rebuilt; the Vault and sessions are unaffected; Splunk use cases continue. | 2 business days | Configuration backup (daily) |
-| Vault administration VM | Server down | Rebuilt from automation; urgent administration follows the offline procedure. | 1 business day | Configuration backup (daily) |
+| Vault administration VM | One VM or one site down | The other site's VM continues; the failed VM is rebuilt from automation. | No loss of Vault administration; rebuild within 1 business day | Configuration backup (daily) |
 | ServiceNow | Unavailable | Validation denies by default; the emergency path applies ([Ticketing (ServiceNow)](#ticketing-servicenow)). | ServiceNow's own targets (Q42) | Not applicable |
 | Recording upload | Fails | The recording stays on the PSM temporary disk and is retried, and an alert is raised. | Not applicable | No recording loss within PSM disk capacity |
 
@@ -911,13 +1195,13 @@ shown, by the body named.
 | DEC-04 | OFFICIAL is in scope with the same pattern as PROTECTED and SECRET; there are CND pools in all three. | Sponsor (Q29, Q32) | 2026-11-20 | Agreed; endorsement at G1 |
 | DEC-05 | PTA is mandatory, one per classification, without high availability. | Sponsor (Q10, Q24) | 2026-11-20 | Agreed; endorsement at G1 |
 | DEC-06 | The **HTML5 Gateway is not included** in this change; it would be added later by change. | Sponsor (Q16, Q20) | 2026-11-25 | Agreed; endorsement at G1 |
-| DEC-07 | One Vault administration VM per classification, administering the Vault and the DR Vault. | Sponsor (Q34) | 2026-11-20 | Agreed; endorsement at G1 |
+| DEC-07 | Two Vault administration VMs per classification, one at each site: the primary one administers the Vault, the secondary one administers the DR Vault and stands by for the Vault. | Sponsor (Q34; revised 2026-11-25) | 2026-11-25 | Agreed; endorsement at G1 |
 | DEC-08 | Ticket validation logic sits in ServiceNow, as an eligibility flag. | Sponsor | 2026-11-20 | Agreed; endorsement at G1 |
 | DEC-09 | Sizing is CyberArk-based. Each classification has 4 consumer PSM nodes, with +3 in PROTECTED and +2 in SECRET held in contingency. | Sponsor (Q22); revised in v0.9 | 2026-11-24 | Agreed; endorsement at G1 |
 | DEC-10 | Every break-glass account uses check-out and check-in. Application local credentials are rotated natively where a CPM plugin or the application's API supports it; otherwise a concession is raised. | Sponsor (Q17) | 2026-11-20 | Agreed; endorsement at G1 |
 | DEC-11 | Build and configuration are automated with Ansible for every component that has a validated Ansible role. Manual steps are documented in the build guide. | Sponsor (Q18) | 2026-11-20 | Agreed; endorsement at G1 |
 | DEC-12 | The records authority sets the recording retention period. The design supports any period, and recordings are kept without purge until the period is set. | Sponsor (Q8) | 2026-11-20 | Agreed; retention value pending (D13) |
-| DEC-13 | An external load balancer in TCP pass-through mode with health checks and monitoring-driven drain is used, rather than DNS load balancing alone ([High availability, load balancing and sites](#high-availability-load-balancing-and-sites)). | Architecture forum | G1 | Proposed |
+| DEC-13 | An external load balancer in TCP pass-through mode with health checks and monitoring-driven drain is used, rather than DNS load balancing alone. | Architecture forum | G1 | Superseded by DEC-21, which adds F5 DNS for site selection |
 | DEC-14 | Session policy ([Session policy](#session-policy)) and emergency path ([Ticketing (ServiceNow)](#ticketing-servicenow)). | Security | G1; emergency path confirmed at G2 after the Q40 test | Pending |
 | DEC-15 | Safe and RBAC model ([Security, RBAC, bypass prevention and break-glass](#security-rbac-bypass-prevention-and-break-glass)). | Architecture forum, on the CyberArk architect's proposal | G2 | Pending |
 | DEC-16 | Enforcement approach for each consuming team (which direct paths close, and when). | CAB, at each wave's G6 | Each G6 | Pending |
@@ -925,12 +1209,51 @@ shown, by the body named.
 | DEC-18 | The accelerated delivery plan is recommended ([Accelerated delivery option (recommended, approximately 10 months)](#accelerated-delivery-option-recommended-approximately-10-months)). | Steering group | G0 | Proposed |
 | DEC-19 | PSMP and PTA run on the existing RHEL 8 SOE (8.8 or later) under a concession, with uplift to RHEL 9 before May 2029. | Sponsor (Q43) | 2026-11-25 | Agreed; endorsement at G1 |
 | DEC-20 | PVWA certificate login (PKIPN) is brought into production in every classification as part of this change (WP33). | Sponsor (Q35) | 2026-11-25 | Agreed; endorsement at G1 |
+| DEC-21 | F5 LTM HA pair at each site, with virtual servers that balance only local nodes in TCP pass-through mode, and F5 DNS wide IPs that choose the site (active-active, persistence, 30-second TTL). Follows CyberArk's DNS load-balancing and pass-through recommendation [CA]. | Architecture forum | G1 | Proposed |
 
 ### Non-production environment
 
 The non-production environment lets the project prove the design, integrations and procedures before
 they reach production. After go-live, it lets the CyberArk team test upgrades, patches, connector and
 WebDriver changes, ServiceNow logic changes and PTA tuning before production (DEC-17).
+
+**Figure 11 — Non-production placement (PROTECTED, primary site)**
+
+```mermaid
+flowchart LR
+    subgraph Z1["Z1 User zone (PROTECTED)"]
+        TST["Testers: CyberArk team,<br/>test team, nominated users"]
+    end
+    subgraph NPZ["Non-production zone (PROTECTED, primary site)"]
+        NLTM["F5 LTM: 2 virtual servers<br/>psm-np, psmp-np"]
+        NPV["PVWA (existing)"]
+        NPSM["PSM x2 (new)"]
+        NPSMP["PSMP x2 (new)"]
+        NV[("Vault (existing)")]
+        NCPM["CPM (existing)"]
+        NPTA["PTA (new)"]
+        NVA["Vault admin VM (new)"]
+        TT["Test targets: Windows, Linux,<br/>network image, SQL Server,<br/>PostgreSQL, web consoles"]
+    end
+    subgraph Z8["Z8 Enterprise services (PROTECTED)"]
+        NSN["ServiceNow non-production instance (Q42)"]
+        NAD["AD, DNS, NTP"]
+    end
+    TST -->|"443"| NPV
+    TST -->|"3389, 22"| NLTM
+    NLTM --> NPSM & NPSMP
+    NPSMP -->|"443 ticket check"| NPV
+    NPV -->|"443"| NSN
+    NPSM & NPSMP & NPV & NCPM & NVA -->|"1858"| NV
+    NV -->|"syslog"| NPTA
+    NPSM & NPSMP & NCPM --> TT
+    NPSM & NPSMP -->|"53, 88, 636"| NAD
+```
+
+Every non-production server sends its logs to the Splunk test index through the PROTECTED Cribl workers
+(TCP 6514 or 9997; not drawn). No production credential, recording or personal data enters the
+non-production zone, and there is no flow
+between the non-production zone and the production PAM zones (Z3 to Z6).
 
 | Item | Design |
 |---|---|
@@ -979,7 +1302,7 @@ Identifiers KD1–KD15 are unchanged from v0.8. KD16–KD38 were added in v0.9, 
 |---|---|---|---|---|---|---|
 | KD23 | Non-production environment in PROTECTED ([Non-production environment](#non-production-environment)), connected to the existing non-production Vault, PVWA and CPM | CyberArk lead | Test lead | Before SIT starts in PROTECTED | WP30 | Every new component is built from Ansible, and a smoke test of each session type and of the ticket path passes. |
 | KD1 | 36 production PSM/PSMP servers, built from automation, hardened, registered to the Vault, with every node of a pool on the same version | CyberArk lead | Test lead | G4 | WP12, WP13 | A pipeline build log exists for every node; the hardening scan has no critical or high finding open; a version report shows one version per pool. |
-| KD2 | Load-balanced pools on F5: 12 production VIPs and 2 non-production VIPs, with health monitors, monitoring-driven drain and distribution across the primary and secondary sites | Network manager | Test lead | G4 | WP08, WP20 | HA tests HA-01 to HA-05 in [Testing](#testing) pass. |
+| KD2 | F5 load balancing: 24 production LTM virtual servers (4 services at each of 2 sites per classification) and 2 non-production, with 12 F5 DNS wide IPs, health monitors and monitoring-driven drain | Network manager | Test lead | G4 | WP08, WP20 | HA tests HA-01 to HA-05 in [Testing](#testing) pass, including site loss (HA-03) through F5 DNS. |
 | KD3 | PTA in each classification, integrated with the Vault, PSM/PSMP, AD, PVWA and Splunk | CyberArk lead | Security accreditation lead | G4 | WP15 | Each minimum detection in [PTA](#pta) fires in test, and its alert reaches PVWA and Splunk. |
 | KD4 | HTML5 Gateway decision record: not included in this change (DEC-06) | CyberArk architect | Architecture forum | G1 | WP14 | The decision is recorded in [Decision log](#decision-log). |
 | KD5 | ServiceNow ticketing with validation logic, failure mode and emergency path, in non-production and in each classification's instance | ServiceNow service owner | Test lead and ITSM process owner | G4 | WP16 | Every ticketing test case in [Testing](#testing) passes. |
@@ -989,7 +1312,7 @@ Identifiers KD1–KD15 are unchanged from v0.8. KD16–KD38 were added in v0.9, 
 | KD9 | Every in-scope account onboarded, including break-glass accounts and native application credentials | CyberArk lead | Account owner, for each wave | G6 for each wave; G7 overall | WP23 | At least 98% of the accounts in each wave are verified and rotated by CPM. Each remaining account has an owner-approved exception in the concession register. |
 | KD10 | Bypass prevention in force for each wave, including retirement of the wave's jump hosts | Network manager (with Identity and Linux Platform) | CAB and Security accreditation lead | G6 for each wave | WP25 | Every direct-access attempt in the bypass tests is blocked and raises a DSOC alert, and the wave's jump hosts are retired. |
 | KD11 | Recording lifecycle procedure: retention, retrieval, archive, disposal and legal hold | CyberArk lead | Records management | G5 (pilot) | WP32 | Retrieval, purge and legal hold are tested in non-production, and records management approves the procedure. |
-| KD15 | Vault administration VM in each classification | CyberArk lead | Security accreditation lead | G4 | WP28 | The acceptance criteria in [Vault administration VM](#vault-administration-vm) are met. |
+| KD15 | Vault administration VMs in each classification, one at each site | CyberArk lead | Security accreditation lead | G4 | WP28 | The acceptance criteria in [Vault administration VM](#vault-administration-vm) are met at both sites. |
 | KD24 | RD Licensing server and RDS CALs installed and activated in every classification and in non-production | Identity lead (CALs bought by Procurement) | Test lead | G3 | WP04, WP09 | The RD licensing diagnostic on each PSM shows Per User mode with licences available. |
 | KD25 | New servers registered as configuration items in the ServiceNow CMDB, with support groups and service relationships | Service Operations manager | ServiceNow team | G5 (pilot) | WP27 | Every new server appears in the CMDB with its support group and service. |
 | KD26 | The known PKI defects in [Defects debt](#defects-debt) are fixed | Identity lead (sub-CA GPO fix); CyberArk lead (PVWA revocation check and trust mode reset) | Security accreditation lead | G3 | WP10 | No non-root certificate is in Trusted Root on PVWA or on the new servers; the revocation check is enabled on the PVWA binding; PKIPN login works with `ClientAuthTrustMode` back at 0. |
@@ -1067,7 +1390,7 @@ The "Verified by" column refers to the test areas in [Testing](#testing).
 | FR3 | Every session shall require a valid ServiceNow ticket ([Ticketing (ServiceNow)](#ticketing-servicenow)). | Ticketing |
 | FR4 | Every session shall be recorded, and the recording shall be retained for the approved period ([Session recording lifecycle](#session-recording-lifecycle)). | Recordings |
 | FR5 | Authorised operators shall be able to monitor and terminate live sessions. | Functional |
-| FR6 | Break-glass accounts shall use exclusive check-out and check-in, rotation on check-in, dual control and a ticket (Figure 8). | Break-glass |
+| FR6 | Break-glass accounts shall use exclusive check-out and check-in, rotation on check-in, dual control and a ticket (Figure 9). | Break-glass |
 | FR7 | CPM shall verify, change and reconcile onboarded credentials on the schedule in each platform's policy. | CPM / onboarding |
 | FR8 | PTA shall analyse Vault, PSM/PSMP and Active Directory activity and raise alerts to Splunk, DSOC and PVWA. | Logging / SIEM |
 | FR9 | CND shall use dedicated pools, Safes and roles, isolated from consuming teams. | Security |
@@ -1092,8 +1415,8 @@ accelerated plan runs several phases in parallel ([Accelerated delivery option (
 
 | Team | Commits to deliver | Receives (from, by when) | Effort (d) | Phases | Accepted when |
 |---|---|---|---|---|---|
-| Data Centre Engineering (DCE) | Up to 53 VMs ([Server inventory](#server-inventory)); placement across the primary and secondary sites; storage; backup policy; Vault and DR Vault storage expansion | Sizing sheet and placement rules (CyberArk lead, before G1) | 35–60 | 0–1 | [Data Centre Engineering](#data-centre-engineering) |
-| Network (firewall, DNS, load balancing) | IP addresses; DNS records; 14 F5 VIPs with health monitors; component flows; target flows per wave; bypass blocks; jump host retirement; CRL/OCSP proxy access for PKIPN | Component flow requirements (CyberArk lead, at G1); target flow requirements (CyberArk lead, 4 weeks before each G5) | 68–115 | 1–2, 4, 5 | [Network: firewall and DNS](#network-firewall-and-dns) and [Network: load balancing](#network-load-balancing) |
+| Data Centre Engineering (DCE) | Up to 56 VMs ([Resource summary](#resource-summary)); placement across the primary and secondary sites; storage; backup policy; Vault and DR Vault storage expansion | Sizing sheet and placement rules (CyberArk lead, before G1) | 35–60 | 0–1 | [Data Centre Engineering](#data-centre-engineering) |
+| Network (firewall, DNS, load balancing) | IP addresses; DNS records; 26 F5 LTM virtual servers and 12 F5 DNS wide IPs with health monitors; component flows; target flows per wave; bypass blocks; jump host retirement; CRL/OCSP proxy access for PKIPN | Component flow requirements (CyberArk lead, at G1); target flow requirements (CyberArk lead, 4 weeks before each G5) | 68–115 | 1–2, 4, 5 | [Network: firewall and DNS](#network-firewall-and-dns) and [Network: load balancing](#network-load-balancing) |
 | Windows Platform | Windows Server 2022 SOE for PSM, the Vault administration VM and non-production Windows servers, with the RDSH role baseline | PSM operating system requirements (CyberArk lead, Phase 0) | 14–28 | 0–1 | [Windows Platform](#windows-platform) |
 | Linux Platform | Confirmation that the existing RHEL 8 SOE (8.8 or later) supports PSMP and PTA; `sshd` restrictions on Linux/Unix targets at enforcement; RHEL 9 uplift plan before May 2029 | Component operating system requirements (CyberArk lead, Phase 0); target lists per wave | 9–18 | 0–1, 5 | [Linux Platform](#linux-platform) |
 | Identity / AD | OUs, GPOs, service accounts, CPM delegations, RD Licensing, break-glass account review, target GPOs for bypass prevention, the sub-CA GPO fix, LDAP UPN mapping support for PKIPN | AD change list (CyberArk lead, at G1) | 25–40 | 1, 4, 5 | [Identity / Active Directory](#identity--active-directory) |
@@ -1112,7 +1435,7 @@ accelerated plan runs several phases in parallel ([Accelerated delivery option (
 | Consuming teams (6–10 teams, *Assumed*; Q27) | Attachment H inventory; dependency checks before rotation; account owners; owner verification; UAT | Templates (CyberArk lead, Phase 0); wave plan (before G1) | 5–9 per team; 30–90 in total | 0, 4, 5 | [Consuming teams and CND](#consuming-teams-and-cnd) |
 | CND (15 analysts) | Attachment H inventory for the CND pools; dependency checks; UAT | As for consuming teams | 5–9 | 0, 4, 5 | [Consuming teams and CND](#consuming-teams-and-cnd) |
 | Project management | Plan, gates, registers, CAB submissions, reporting, closure | All workstreams | Accelerated: about 139 (0.8 FTE × 9.5 months). Standard: about 165 (0.6 FTE × 15 months) | All | [Project management](#project-management) |
-| CyberArk team | Design, build, configuration, non-production, PKIPN in production, testing support, handover, and support to every other team's work packages | Inputs from every workstream above | Standard: 279–483. Accelerated: 267–457. Account onboarding (WP23) is additional | All | [CyberArk team](#cyberark-team) |
+| CyberArk team | Design, build, configuration, non-production, PKIPN in production, testing support, handover, and support to every other team's work packages | Inputs from every workstream above | Standard: 281–486. Accelerated: 269–460. Account onboarding (WP23) is additional | All | [CyberArk team](#cyberark-team) |
 
 **Totals.** Accelerated plan: approximately 820–1,345 person-days, plus WP23. Standard plan:
 approximately 860–1,400 person-days, plus WP23. At the example volume in [Resource effort and work packages](#resource-effort-and-work-packages), WP23 adds about 115
@@ -1124,9 +1447,9 @@ DCE commits to:
 - provide, in each production classification:
   - 6 PSM nodes (4 consumer and 2 CND) and 6 PSMP nodes (4 consumer and 2 CND), on Windows and Linux
     respectively;
-  - 1 PTA (Linux) and 1 Vault administration VM (Windows).
+  - 1 PTA (Linux) at the primary site, and 2 Vault administration VMs (Windows), one at each site.
 
-  That is 14 VMs per classification and 42 in total;
+  That is 15 VMs per classification and 45 in total, sized as in [Resource summary](#resource-summary);
 - hold capacity for up to 5 contingency PSM nodes (3 PROTECTED, 2 SECRET);
 - provide the 6 non-production VMs in [Non-production environment](#non-production-environment) within 4 weeks of the start of Phase 1, from
   a request raised in Phase 0;
@@ -1141,37 +1464,40 @@ specification, placement evidence is provided, and backups are configured.
 
 #### Network: firewall and DNS
 
-Network commits to providing IP addresses and DNS records for every node and VIP, and the following
-flows. Attachment A lists each rule with its exact ports. Network and Security approve the component-flow
+Network commits to providing IP addresses and DNS records for every node and virtual server (counts in
+[Resource summary](#resource-summary), Table R4), and the following flows. The last column maps each flow to the
+[Zone-to-zone flow matrix](#zone-to-zone-flow-matrix). Attachment A lists each rule with its exact ports. Network and Security approve the component-flow
 section at G1, before it is implemented in Phase 1, and the complete matrix at G2.
 
 **Component flows (Phase 1):**
 
-| From | To | Port | Purpose |
-|---|---|---|---|
-| User networks | PVWA VIP | 443 | Portal, PVWA *Connect* |
-| User networks | PSM VIP | 3389 | Session to PSM, launched by PVWA |
-| User networks | PSMP VIP | 22 | Native SSH through PSMP |
-| CND networks | PVWA VIP | 443 | Portal, PVWA *Connect* |
-| CND networks | CND PSM / PSMP VIPs | 3389 / 22 | CND sessions |
-| PSM, PSMP, PTA, Vault administration VM | Vault, DR Vault | 1858 | Vault protocol |
-| PVWA (all nodes) | Proxy, then the CRL and OCSP addresses of the user-certificate issuing CAs | The proxy port, then HTTP 80 | PKIPN revocation checks (D16) |
-| Vault administration VM | Vault, DR Vault | 9022 (to be validated in Phase 1) | PARAgent remote administration |
-| Vault administration VM | PVWA | 443 | Administration |
-| PVWA | ServiceNow | 443 | Ticket validation |
-| PSMP | PVWA | 443 | Ticket validation for SSH sessions [CA] |
-| PTA | PVWA | 443 (to be validated in Phase 1) | PTA alerts in PVWA |
-| Vault | PTA | Syslog: TCP 514, or 6514 with TLS (to be validated in Phase 1) | Vault audit for analytics |
-| Domain controllers, or SIEM | PTA | As the PTA design decides at G1 (Q37) | Events for analytics |
-| PSM, PSMP | Domain controllers | DNS 53, Kerberos 88, LDAPS 636, SMB 445 (Group Policy) | Domain membership, AD Bridge |
-| PSM, PSMP, Vault, PTA, PVWA, CPM, Vault administration VM | Cribl workers | Syslog over TLS 6514, or Splunk forwarder 9997 where TLS syslog is not supported | Logging |
-| Monitoring | All new nodes | The monitoring tool's ports, listed in Attachment A | Health |
-| Monitoring | F5 management interface (iControl REST) | 443 | Node drain (R9) |
-| Ansible controller | Windows nodes; Linux nodes | WinRM 5986; SSH 22 (2222 on PSMP) | Build and configuration |
-| All new nodes | Patching, NTP, CRL/OCSP, EDR management, backup | The ports of each service, listed in Attachment A | Operations |
-| CyberArk administrators (through PSM) | PSM, Vault administration VM | RDP 3389 | Server administration |
-| CyberArk administrators (through PSM) | PSMP; PTA | SSH 2222 on PSMP; SSH 22 on PTA | Server administration |
-| Non-production zone | Non-production ServiceNow, Cribl, domain controllers, test targets | As for production | Non-production equivalents of the flows above |
+| From | To | Port | Purpose | Zones (flow) |
+|---|---|---|---| --- |
+| User networks | PVWA VIP | 443 | Portal, PVWA *Connect* | Z1 → Z3 (F1) |
+| User networks | PSM VIP | 3389 | Session to PSM, launched by PVWA | Z1 → Z3 (F2) |
+| User networks | PSMP VIP | 22 | Native SSH through PSMP | Z1 → Z3 (F2) |
+| CND networks | PVWA VIP | 443 | Portal, PVWA *Connect* | Z2 → Z3 (F1) |
+| CND networks | CND PSM / PSMP VIPs | 3389 / 22 | CND sessions | Z2 → Z3 (F3) |
+| User and CND networks (through their DNS resolvers) | F5 DNS | UDP/TCP 53 | Resolve the wide IPs | Z1, Z2 → Z8 (F4) |
+| F5 DNS | F5 LTM at each site | TCP 4353 (iQuery) | Site health for global load balancing | Z8 → Z3 (F19) |
+| PSM, PSMP, PTA, Vault administration VM | Vault, DR Vault | 1858 | Vault protocol | Z4a, Z4b, Z6 → Z5 (F9) |
+| PVWA (all nodes) | Proxy, then the CRL and OCSP addresses of the user-certificate issuing CAs | The proxy port, then HTTP 80 | PKIPN revocation checks (D16) | Z3 → Z8 (F8) |
+| Vault administration VM | Vault, DR Vault | 9022 (to be validated in Phase 1) | PARAgent remote administration | Z6 → Z5 (F10) |
+| Vault administration VM | PVWA | 443 | Administration | Z6 → Z3 |
+| PVWA | ServiceNow | 443 | Ticket validation | Z3 → Z8 (F7) |
+| PSMP | PVWA | 443 | Ticket validation for SSH sessions [CA] | Z4a, Z4b → Z3 (F6) |
+| PTA | PVWA | 443 (to be validated in Phase 1) | PTA alerts in PVWA | Z6 → Z3 (F14) |
+| Vault | PTA | Syslog: TCP 514, or 6514 with TLS (to be validated in Phase 1) | Vault audit for analytics | Z5 → Z6 (F12) |
+| Domain controllers, or SIEM | PTA | As the PTA design decides at G1 (Q37) | Events for analytics | Z8 → Z6 (F13) |
+| PSM, PSMP | Domain controllers | DNS 53, Kerberos 88, LDAPS 636, SMB 445 (Group Policy) | Domain membership, AD Bridge | Z4a, Z4b → Z8 (F15) |
+| PSM, PSMP, Vault, PTA, PVWA, CPM, Vault administration VM | Cribl workers | Syslog over TLS 6514, or Splunk forwarder 9997 where TLS syslog is not supported | Logging | Z3–Z6 → Z8 (F16) |
+| Monitoring | All new nodes | The monitoring tool's ports, listed in Attachment A | Health | Z8 → Z3, Z4, Z6 (F17) |
+| Monitoring | F5 management interface (iControl REST) | 443 | Node drain (R9) | Z8 → Z3 (F18) |
+| Ansible controller | Windows nodes; Linux nodes | WinRM 5986; SSH 22 (2222 on PSMP) | Build and configuration | Z8 → Z4, Z6 (F20) |
+| All new nodes | Patching, NTP, CRL/OCSP, EDR management, backup | The ports of each service, listed in Attachment A | Operations | Z4–Z6 → Z8 (F21) |
+| CyberArk administrators (through PSM) | PSM, Vault administration VM | RDP 3389 | Server administration | Z4 → Z4, Z6 (F22) |
+| CyberArk administrators (through PSM) | PSMP; PTA | SSH 2222 on PSMP; SSH 22 on PTA | Server administration | Z4 → Z4, Z6 (F22) |
+| Non-production zone | Non-production ServiceNow, Cribl, domain controllers, test targets | As for production | Non-production equivalents of the flows above | Within non-production |
 
 **Target flows (before each wave's G5):** from the PSM and PSMP pools and from CPM to each target
 network in the wave. These cover RDP 3389, SSH 22, the database and HTTPS administration ports of each
@@ -1454,16 +1780,16 @@ before G1.
 | Item | Detail | Quantity | Amount |
 |---|---|---|---|
 | Funding source | To be confirmed by the steering group (Q14). | — | TBC (Q14) |
-| Infrastructure, production | VMs (compute, storage, backup) at chargeback rates | 42 | TBC (Q14) |
+| Infrastructure, production | VMs (compute, storage, backup) at chargeback rates ([Resource summary](#resource-summary)) | 45 | TBC (Q14) |
 | Infrastructure, non-production | VMs for the PROTECTED non-production environment ([Non-production environment](#non-production-environment)) | 6 | TBC (Q14) |
 | Vault and DR Vault storage | Recordings, both copies ([Capacity](#capacity)) | 12–67 TB per year for each copy (example) | TBC (Q14) |
 | RDS CALs | Per User CALs of the same or a newer version than the PSM operating system, on each classification's RD Licensing server. Isolated licence servers cannot share a pack; Procurement confirms this with Microsoft licensing before G1. PROTECTED: 250 + 10% = 275, plus 17 for CND = 292. SECRET: 200 + 10% = 220, plus 17 = 237. OFFICIAL: 90 + 10% = 99, plus 17 = 116. Non-production testers: 10. CND: 15 analysts + 10%, rounded up to 17, in each classification, because they use all three. | **≈ 655** | TBC (Q14) |
 | Windows Server CALs | PSM users also need Windows Server CALs. Procurement confirms before G1 whether the enterprise agreement already covers them. | ≈ 655 | TBC (Q14) |
-| Windows Server licences | Core-based. Production: 18 PSM and 3 Vault administration VMs. Non-production: 2 PSM and the Vault administration VM. | 21 production + 3 non-production | TBC (Q14) |
+| Windows Server licences | Production: 18 PSM and 6 Vault administration VMs. Non-production: 2 PSM and the Vault administration VM. Core counts in [Resource summary](#resource-summary), Table R6. | 24 production + 3 non-production | TBC (Q14) |
 | RHEL subscriptions | Production: PSMP 18, PTA 3. Non-production: PSMP 2, PTA 1. | 21 production + 3 non-production | TBC (Q14) |
 | CyberArk licences | PSM, PSMP and PTA entitlement under the licence model, including non-production use | TBC (Q14) | TBC (Q14) |
 | Client tool licences on PSM | SQL Server Management Studio and pgAdmin need no commercial licence (Q21) | None expected | None expected |
-| Load balancer capacity | F5 virtual servers, licences and throughput | 14 VIPs | TBC (Q14) |
+| F5 capacity | LTM virtual servers and throughput; F5 DNS module in each classification (Q52) | 26 virtual servers; 12 wide IPs | TBC (Q14) |
 | Splunk ingest | Additional GB per day from new sources, estimated from non-production and the pilot | SIEM lead estimates before G4 | TBC (Q14) |
 | Cribl capacity | Additional worker capacity, if the SIEM lead finds it is needed | SIEM lead estimates before G2 | TBC (Q14) |
 | Ansible platform | Subscription or execution environment, if DevSecOps does not already have one | DevSecOps lead confirms before G1 | TBC (Q14) |
@@ -1491,9 +1817,9 @@ for recordings, which scales with retention; Splunk ingest; and firewall and onb
 | Design | High | New tiers in three classifications plus non-production; two architecture forum gates; decisions in [Decision log](#decision-log). |
 | Drafting | Medium–High | About 50 deliverables and artefacts (39 key deliverables in [Key deliverables](#key-deliverables), 11 attachments in [Attachment register](#attachment-register) and 4 registers), several of them produced for each classification. |
 | Testing | High | Every connection component and target type, ticketing, HA, DR, security and performance; tested first in non-production, then in each classification. |
-| Deployment | High | Up to 53 VMs, transfers to SECRET through the CDS, PKIPN in production, onboarding waves and enforcement. |
+| Deployment | High | Up to 56 VMs, transfers to SECRET through the CDS, PKIPN in production, onboarding waves and enforcement. |
 | Production | High | 540 users change their access method; rotation can break hard-coded passwords. |
-| Service operations | Medium–High | Up to 53 servers to run, and ongoing onboarding and upgrades, including the RHEL 9 uplift ([Service operations and BAU run effort](#service-operations-and-bau-run-effort)). |
+| Service operations | Medium–High | Up to 56 servers to run, and ongoing onboarding and upgrades, including the RHEL 9 uplift ([Service operations and BAU run effort](#service-operations-and-bau-run-effort)). |
 | Defects, concessions and document debt | Medium | [Defects debt](#defects-debt), [Concessions debt](#concessions-debt) and [Document debt](#document-debt). |
 
 ### Design impact
@@ -1534,7 +1860,7 @@ classification and run in approved change windows before users are onboarded the
 | HA / failover | HA-01 node loss; HA-02 service down with port open (drain); HA-03 site loss; HA-04 recording continuity when a node fails; HA-05 load balancer failover. | HA-01, HA-02, HA-04 in non-production; all five in production |
 | Performance | Ramp to peak with one node out of service; no more than 60 sessions per PSM; launch time (NFR3); PSM temporary disk and Vault upload throughput; PVWA load. Uses load-generation tooling and synthetic accounts. | Production, PROTECTED, before the pilot |
 | Logging / SIEM | Each use case fires and is triaged; data reaches Splunk within the NFR5 target; PTA detections. | Non-production; core use cases in production |
-| Break-glass | Figure 8 end to end; the offline emergency-access procedure (KD27); the PSM outage runbook. | Non-production; once in production |
+| Break-glass | Figure 9 end to end; the offline emergency-access procedure (KD27); the PSM outage runbook. | Non-production; once in production |
 | CPM / onboarding | Verify, change and reconcile for each platform; native application rotation; dependency checks before rotation. | Non-production; each wave in production |
 | Recordings | Playback; retrieval audit; retention purge; legal hold. | Non-production |
 | DR | DR-01 rebuild from automation and restore of configuration; DR-02 Vault to DR Vault failover with active sessions; RTO targets ([Disaster recovery and resilience](#disaster-recovery-and-resilience)). | DR-01 in non-production; DR-02 in production |
@@ -1576,7 +1902,7 @@ except where the accelerated plan states otherwise ([Accelerated delivery option
 | Gate | When | Approving body | Evidence required | Outcome |
 |---|---|---|---|---|
 | G0 | Before Phase 0 | Steering group (funding approver) and change authority | This IA at v1.0; the effort and cost envelope; the selected delivery plan; the accreditation authority for each classification named (Q45) | Scope, plan and Phase 0–1 funding approved; the change is classified |
-| G1 | End of Phase 0 | Architecture forum | HLD (KD16); decision records DEC-01 to DEC-14, DEC-17, DEC-19 and DEC-20; answers to the questions marked "G1" in [Open questions](#open-questions); confirmed effort from each workstream | HLD endorsed, with conditions recorded (KD18); effort re-baselined |
+| G1 | End of Phase 0 | Architecture forum | HLD (KD16); decision records DEC-01 to DEC-14, DEC-17 and DEC-19 to DEC-21; the zone mapping (Q51); answers to the questions marked "G1" in [Open questions](#open-questions); confirmed effort from each workstream | HLD endorsed, with conditions recorded (KD18); effort re-baselined |
 | G2 | Before the component build (start of Phase 2) | Architecture forum | LLD for each classification and for non-production (KD17); firewall matrix (KD19); test strategy (KD22); Safe and RBAC model (DEC-15) | LLD endorsed; funding for Phases 2–6 released by the steering group |
 | G3 | Before the production build in each classification | CAB | KD24 and KD26 complete; infrastructure accepted ([Data Centre Engineering](#data-centre-engineering), [Network: firewall and DNS](#network-firewall-and-dns), [Network: load balancing](#network-load-balancing), [Windows Platform](#windows-platform), [Linux Platform](#linux-platform), [Identity / Active Directory](#identity--active-directory) and [PKI](#pki)); build change approved | Production build may start in that classification |
 | G4 | Before production use in each classification | Accreditation authority | Test completion report for SIT (KD31); penetration test report (KD30); security risk assessment and system security plan (KD20) | Authority to operate issued (KD32) |
@@ -1591,7 +1917,7 @@ except where the accelerated plan states otherwise ([Accelerated delivery option
 In the standard plan, phases follow their gates in sequence, and SECRET and OFFICIAL are built after
 PROTECTED passes SIT. The dates are illustrative. The steering group fixes the start date at G0.
 
-**Figure 10 — Standard schedule (start date illustrative)**
+**Figure 12 — Standard schedule (start date illustrative)**
 
 ```mermaid
 gantt
@@ -1681,7 +2007,7 @@ parallel, and accreditation evidence is prepared alongside the build.
 | **L6. Fast Phase 0** | The preconditions below are met by week 4, and G1 is passed by week 5. | About 1 month. |
 | **L7. Extra capacity** | CyberArk (Palo Alto Networks) Professional Services, engaged for builds and onboarding (Q14). | Removes the CyberArk team as a bottleneck (cost item, [Costs](#costs)). |
 
-**Figure 11 — Accelerated schedule (start date illustrative)**
+**Figure 13 — Accelerated schedule (start date illustrative)**
 
 ```mermaid
 gantt
@@ -1725,7 +2051,7 @@ gantt
 | Team | Change from the standard plan |
 |---|---|
 | CyberArk team | Pilot in months 3–4; playbooks proven in non-production and reused across classifications; discovery and automatic onboarding; standard platforms first. Peak load needs 3–4 engineers or a partner (L7). |
-| Data Centre Engineering | Non-production VMs are delivered first, then all 42 production VMs together, with the pilot VMs first. |
+| Data Centre Engineering | Non-production VMs are delivered first, then all 45 production VMs together, with the pilot VMs first. |
 | Network | One firewall request in Phase 1 covers the component flows for all three classifications; target flows are batched per wave with standard rules. |
 | Identity / AD | The AD change list for all three classifications goes in one change; enforcement GPOs are prepared in advance. |
 | Windows / Linux Platform | The Windows Server 2022 SOE and the RHEL 8 SOE confirmation are completed in Phase 0. There is no schedule contingency for the SOEs: a delay moves the pilot date. |
@@ -1785,7 +2111,7 @@ The effort is compressed into fewer months, so peak demand on every team is high
 ### Service operations and BAU run effort
 
 **Rating: Medium–High.**
-- Up to 53 new servers (including non-production) need to be monitored, patched, backed up and
+- Up to 56 new servers (including non-production) need to be monitored, patched, backed up and
   upgraded.
 - **Upgrades.** The CyberArk upgrade order is Vault, then PVWA, then CPM, then PSM/PSMP, then PTA. The
   CyberArk team validates this order against the 14.6 upgrade guide in non-production before G7.
@@ -1817,7 +2143,7 @@ steering group approves indicative BAU funding at G0 and confirms it at G7.
 | CyberArk team | Onboarding new systems; platform and connector changes; upgrades (about 2 per year); PSM/PSMP/PTA operations; recording requests; break-glass reviews; keeping non-production current | 1.7–2.7 FTE |
 | DSOC and Security Operations | Triage of the new use cases and PTA alerts; L2 support, 24x7 (Q46) | 0.3–0.7 FTE |
 | Network | Target flows for new systems; load balancer changes | 0.1–0.2 FTE |
-| Windows / Linux Platform | Monthly patching with drain for up to 53 servers (about 2–4 days a month) | 0.1–0.2 FTE |
+| Windows / Linux Platform | Monthly patching with drain for up to 56 servers (about 2–4 days a month) | 0.1–0.2 FTE |
 | Monitoring and Control | Alert and dashboard maintenance | 0.05–0.1 FTE |
 | Identity | Service accounts, GPOs and delegations for new systems | 0.05–0.1 FTE |
 | ServiceNow team | Maintaining the eligibility logic and the integration in three instances and non-production | 0.05–0.1 FTE |
@@ -1839,7 +2165,7 @@ steering group approves indicative BAU funding at G0 and confirms it at G7.
 | ServiceNow team | Integration and validation logic in three instances and non-production; ServiceNow uptime now affects privileged access. | Medium–High |
 | Network team | A large firewall volume in Phases 1, 4 and 5. | High |
 | Identity team | GPOs, delegations, break-glass accounts and enforcement GPOs. | Medium–High |
-| Data Centre Engineering | Up to 53 VMs and storage growth. | Medium–High |
+| Data Centre Engineering | Up to 56 VMs and storage growth. | Medium–High |
 | Application owners | Credential rotation, dependency checks and possible concessions. | Medium |
 | CyberArk team | Design, build, onboarding and a larger BAU estate. | High |
 
@@ -1915,7 +2241,7 @@ is shown; [Requirements by workstream: workstream commitments](#requirements-by-
 | WP02 | HLD, LLDs, decision records, architecture forum submissions (KD16–KD18) | CyberArk | Security, Network | WP01 | 0–1 | G1, G2 | CyberArk 30–45 |
 | WP03 | Security risk assessments, system security plans, privacy impact assessment, penetration test coordination, accreditation submissions, concession approvals (KD20, KD21, KD30, KD32) | Security | CyberArk | WP02 | 0–4 | G4 | Security 30–55; CyberArk 8–12 |
 | WP04 | Procurement: capacity, CALs, licences, RHEL, client tools (KD24) | Procurement | CyberArk, DCE | WP02 | 0–1 | G3 | Procurement 6–12; CyberArk 2–3 |
-| WP05 | VM provisioning (up to 53) and placement; Vault storage expansion | DCE | — | WP04, WP06 | 1 | G3 | DCE 35–60 |
+| WP05 | VM provisioning (up to 56) and placement; Vault storage expansion | DCE | — | WP04, WP06 | 1 | G3 | DCE 35–60 |
 | WP06 | Windows Server 2022 SOE readiness and SOE; confirmation of the RHEL 8 SOE for PSMP and PTA | Windows Platform | Linux Platform, CyberArk | WP02 | 0–1 | G1 (readiness), G3 | Windows 14–28; Linux 3–6; CyberArk 3–5 |
 | WP07 | IP addresses, DNS, component firewall flows, including non-production (KD19) | Network | CyberArk | WP02 | 1 | G2, G3 | Network 16–24 |
 | WP08 | Load balancing: VIPs, persistence, health checks, drain integration (KD2) | Network | Monitoring and Control, CyberArk | WP05, WP07 | 1–2 | G3 | Network 14–21 |
@@ -1938,7 +2264,7 @@ is shown; [Requirements by workstream: workstream commitments](#requirements-by-
 | WP25 | Enforcement: bypass blocks and jump host retirement (Network), Windows target GPOs (Identity), Linux `sshd` restrictions (Linux Platform) (KD10) | Network | Identity, Linux Platform, CyberArk | WP23, WP18, WP19 | 5 | G6 | Network 14–24; Identity 8–14; Linux 6–12; CyberArk 4–6 |
 | WP26 | Testing: SIT, security, HA/DR, performance, ticketing, logging, UAT (KD12, KD22, KD31) | Test | CyberArk, all teams | WP12–WP20, WP30 (SIT); WP23 (UAT) | 1–5 | G2, G4, G6 | Test 50–80; CyberArk 20–30; consuming teams 1–2 per team (6–20); CND 1–2 |
 | WP27 | Service transition: runbooks, KB, training, communications, hypercare, CMDB, upgrade procedure, operational acceptance (KD13, KD14, KD25, KD27, KD34–KD37) | Service Operations | CyberArk | WP26 | 4–6 | G5, G7 | Service Operations 14–21; CyberArk 11–17 |
-| WP28 | Vault administration VMs: 3 production and 1 non-production (KD15) | CyberArk | DCE, Network, DevSecOps | WP05, WP11 | 1–3 | G4 | CyberArk 6–10 |
+| WP28 | Vault administration VMs: 6 production (one per site in each classification) and 1 non-production (KD15) | CyberArk | DCE, Network, DevSecOps | WP05, WP11 | 1–3 | G4 | CyberArk 8–13 |
 | WP29 | Credential dependency discovery before each wave (services, scheduled tasks, scripts, application configuration files, agents; CPM usages) | CyberArk | Account owners | WP01 | 0, 4 | G5 | CyberArk 10–20; consuming teams 1–2 per team (6–20); CND 1–2 |
 | WP30 | Non-production environment on the existing non-production Vault, PVWA and CPM: build, and maintenance until G7 (KD23) | CyberArk | DCE, Network, Identity, ServiceNow, SIEM | WP05, WP07, WP09, WP11 | 1–6 | Before PROTECTED SIT | CyberArk 15–25 |
 | WP31 | Configuration backup of the new servers | Backup | CyberArk | WP05 | 1–3 | G4 | Backup 3–6 |
@@ -2084,7 +2410,7 @@ main findings and where v0.9 resolves them.
 | Architecture forum | There was no architecture approval path, and the key deliverables listed only built components. | Gates G1 and G2 ([Governance and approval gates](#governance-and-approval-gates)); HLD, LLD and endorsement records added as KD16–KD18 ([Key deliverables](#key-deliverables)). |
 | Architecture forum | There was no non-production environment, so every test, upgrade and connector change would land in production first. | Non-production environment in PROTECTED ([Non-production environment](#non-production-environment), DEC-17, KD23, WP30); test environments in [Testing](#testing); residual production-only tests in R21. |
 | Architecture forum | The design used a load balancer that differs from the DNS load balancing CyberArk recommends, with no decision record. | DEC-13 and Attachment J options L-A and L-B. |
-| Architecture forum | Figure 2 showed CND bypassing PVWA and had no user-to-PSM path; figures disagreed with the text. | Figures 1–3 redrawn ([Solution summary](#solution-summary), [Logical architecture](#logical-architecture) and [Network zones and flows](#network-zones-and-flows)), with the CND trust boundary stated. |
+| Architecture forum | Figure 3 showed CND bypassing PVWA and had no user-to-PSM path; figures disagreed with the text. | Figures 1, 3 and 4 redrawn (v0.9); zone and site figures added (v0.11) ([Solution summary](#solution-summary), [Logical architecture](#logical-architecture) and [Network zones, sites and flows](#network-zones-sites-and-flows)), with the CND trust boundary stated. |
 | Architecture forum | Decisions had no approver or status; open design items had no identifiers. | Decision log with "Decided by" and "Status" columns ([Decision log](#decision-log)); open items listed with references in [Design impact](#design-impact). |
 | Architecture forum | "Uplift from 2019" contradicted "no existing PSM". | PSM is a new build on Windows Server 2022 (DEC-03, [Versions and operating systems](#versions-and-operating-systems), Q6 in [Answered questions](#answered-questions)). |
 | Infrastructure | VM counts excluded contingency, RD Licensing and possible PVWA/CPM nodes; specifications were ranges. | Planning ceiling of 63 VMs plus possible additions (53 in v0.10) ([Server inventory](#server-inventory)); build sheet in Attachment B; backup scope ([Backup](#backup)); PSMP administration port ([Linux Platform](#linux-platform)). |
@@ -2094,7 +2420,7 @@ main findings and where v0.9 resolves them.
 | Security and accreditation | The incident-response logic for a PSM outage pointed to the emergency path. | Which path applies on each failure ([Security, RBAC, bypass prevention and break-glass](#security-rbac-bypass-prevention-and-break-glass) and [Production impact](#production-impact)); R23. |
 | ServiceNow and ITSM | Eligible ticket types, the requester match, ServiceNow's service tier and a non-production instance were not defined. | [Ticketing (ServiceNow)](#ticketing-servicenow); Q41, Q42; R22; [ServiceNow team](#servicenow-team). |
 | Project manager and funding approver | Effort totals could not be reproduced; there was no Test team row; there was no recommendation or decision sought. | Effort rebuilt from the work-package shares ([Requirements by workstream: workstream commitments](#requirements-by-workstream-workstream-commitments) and [Resource effort and work packages](#resource-effort-and-work-packages)); Test team row; decision sought and recommendation in the executive summary; DEC-18. |
-| Project manager and funding approver | Schedules started phases before their gates and ended hypercare before the last enforcement. | Figures 10 and 11 rebuilt with gate milestones; durations restated (standard about 15 months; accelerated about 10 months). |
+| Project manager and funding approver | Schedules started phases before their gates and ended hypercare before the last enforcement. | Figures 12 and 13 (then 10 and 11) rebuilt with gate milestones; durations restated (standard about 15 months; accelerated about 10 months). |
 | Service Operations | There were no operational acceptance or hypercare exit criteria, and the BAU table was incomplete. | Criteria in [Standard plan (approximately 15 months)](#standard-plan-approximately-15-months); BAU table extended ([Service operations and BAU run effort](#service-operations-and-bau-run-effort)); support hours (Q46). |
 | Test team | The test team was not a workstream; there were no entry or exit criteria and no test data. | [Test team](#test-team); entry and exit criteria and defect severity ([Testing](#testing)); KD22 and KD31. |
 | Consuming teams | Accountability for dependency checks was unclear; the impact on daily work was not described. | Account owners are accountable ([Consuming teams and CND](#consuming-teams-and-cnd), R19, R27); daily-work impacts ([Impact by team and persona](#impact-by-team-and-persona)); concession process ([Concessions debt](#concessions-debt)). |
@@ -2153,6 +2479,7 @@ main findings and where v0.9 resolves them.
 | F5 / BIG-IP | The load balancer platform used in every classification |
 | FQDN | Fully qualified domain name |
 | FTE | Full-time equivalent |
+| GTM / F5 DNS | F5's DNS-based global load balancing; a *wide IP* is a DNS name it answers with the healthy site's virtual server |
 | Gate | A formal approval point (G0–G7, [Governance and approval gates](#governance-and-approval-gates)) |
 | Go-live | The first production use: the pilot wave passing G5 |
 | GPO | Group Policy Object |
@@ -2194,8 +2521,10 @@ main findings and where v0.9 resolves them.
 | UAT | User acceptance testing |
 | UPN | User principal name |
 | VIP | A virtual IP address on the load balancer that fronts a pool |
+| Virtual server (F5 LTM) | An address and port on the F5 that receives connections and balances them over a pool of nodes |
 | Wave | A group of teams, targets and accounts onboarded and enforced together |
 | WebDriver | The browser automation component that PSM web connectors use |
+| Zone | A network segment with its own trust level, separated from other zones by firewalls (Z1–Z8) |
 | XSL | The stylesheet language the Vault uses to format syslog output |
 
 ---
@@ -2263,3 +2592,5 @@ main findings and where v0.9 resolves them.
 | Q44 | Which archive system holds recordings if they outgrow Vault storage? | Records management, with Security | G2 |
 | Q45 | Who is the accreditation authority for each classification? | Project management team | G0 |
 | Q50 | Is the CMDB data good enough for target CI matching? Needed only if CI matching is added (A15). | ServiceNow team | G2 |
+| Q51 | How do the proposed zones Z1–Z8 map to the existing zones, VLANs and firewalls in each classification, and can the F5 LTM be the default gateway of the PSM and PSMP nodes? | Network manager | G1 |
+| Q52 | Is the F5 DNS (GTM) module licensed and available in each classification? | Network manager | Week 4 of Phase 0 (accelerated plan) or G1 (standard plan) |
