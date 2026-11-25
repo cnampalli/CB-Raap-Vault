@@ -433,7 +433,7 @@ def fig_ticket():
     s.diamond(560, 320, 190, 90, 'Emergency\nrole?')
     s.box(760, 75, 300, 60, 'Session allowed', 'ticket stored with the session and audit', accent='#2E7D4F')
     s.box(760, 260, 300, 60, 'Emergency path', 'reason + dual-control approval in PVWA; 4 hours', accent='#B26B00')
-    s.box(760, 345, 300, 60, 'DSOC alert; review next business day', 'retrospective ticket within 1 day', accent='#B26B00')
+    s.box(760, 345, 300, 60, 'DSOC alert; review next business day', 'retrospective ticket next business day', accent='#B26B00')
     s.box(380, 380, 120, 40, 'Denied', None, accent=RED)
     s.edge([(210, 205), (245, 205)])
     s.edge([(330, 160), (330, 105), (460, 105)], 'Yes', (330, 130))
@@ -530,9 +530,9 @@ def fig_schedule():
         y = 80 + i * 38
         s.text(20, y + 11, label, 11.5, '600' if not label.startswith('   ') else 'normal', INK)
         s.add(f'<rect x="{X(p(a)):.1f}" y="{y}" width="{X(p(b)) - X(p(a)):.1f}" height="22" rx="3" fill="{col}"/>')
-    ms = [('G0', '2027-01-04'), ('G1', '2027-02-05'), ('G2', '2027-03-05'), ('G3 S/O', '2027-04-02'),
+    ms = [('G0', '2027-01-04'), ('G1', '2027-02-05'), ('G2, G3 PROT', '2027-03-05'), ('G3 S/O', '2027-04-02'),
           ('G4 PROT', '2027-05-07'), ('G5 pilot', '2027-05-10'), ('G4 S/O', '2027-07-09'),
-          ('Last G6', '2027-10-01'), ('G7', '2027-10-29')]
+          ('Last G6', '2027-09-03'), ('G7', '2027-10-29')]
     y = 400
     s.text(20, y + 8, 'Gates (accelerated plan)', 11.5, '600')
     for i, (lab, d0) in enumerate(ms):
